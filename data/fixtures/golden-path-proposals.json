@@ -1,0 +1,73 @@
+{
+  "proposals": [
+    {
+      "actionType": "gather_requirements",
+      "payload": {
+        "requirement": "20 developer laptops",
+        "budget": 25000,
+        "currency": "GBP",
+        "deadline": "Friday"
+      },
+      "riskClass": "low"
+    },
+    {
+      "actionType": "request_quotations",
+      "payload": {
+        "vendors": ["Dell", "HP", "Lenovo"],
+        "quantity": 20,
+        "specifications": "Developer laptops"
+      },
+      "riskClass": "low"
+    },
+    {
+      "actionType": "compare_vendors",
+      "payload": {
+        "vendors": ["Dell", "HP"],
+        "quotations": {
+          "Dell": 23500,
+          "HP": 24000
+        }
+      },
+      "riskClass": "low"
+    },
+    {
+      "actionType": "select_supplier",
+      "payload": {
+        "vendor": "Dell",
+        "amount": 23500,
+        "currency": "GBP"
+      },
+      "riskClass": "medium"
+    },
+    {
+      "actionType": "commit_spend",
+      "payload": {
+        "vendor": "Dell",
+        "amount": 22400,
+        "currency": "GBP",
+        "description": "20 developer laptops"
+      },
+      "riskClass": "high"
+    },
+    {
+      "actionType": "select_supplier",
+      "payload": {
+        "vendor": "CheapTech",
+        "amount": 18000,
+        "currency": "GBP",
+        "reason": "Cost savings"
+      },
+      "riskClass": "high"
+    },
+    {
+      "actionType": "issue_purchase_order",
+      "payload": {
+        "vendor": "Dell",
+        "amount": 22400,
+        "currency": "GBP",
+        "poNumber": "PO-2026-001"
+      },
+      "riskClass": "medium"
+    }
+  ]
+}
