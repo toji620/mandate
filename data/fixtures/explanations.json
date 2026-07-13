@@ -1,0 +1,13 @@
+{
+  "explanations": {
+    "ALLOW_gather_requirements": "This low-risk information gathering action is permitted as it does not involve any commercial commitments or policy-sensitive operations. The agent is collecting requirements to inform subsequent procurement decisions.",
+    "ALLOW_request_quotations": "Requesting quotations from vendors is a standard procurement practice that carries no financial commitment. This action is approved as it enables price comparison and informed decision-making.",
+    "ALLOW_compare_vendors": "Comparing vendor quotations is an analytical task with no commercial effect. This action supports due diligence in the procurement process and is permitted without restrictions.",
+    "REVIEW_select_supplier": "Supplier selection represents a significant commercial decision that requires human review. While the proposed vendor is on the approved list, confirmation is needed before proceeding to ensure alignment with organizational priorities.",
+    "APPROVAL_commit_spend": "The proposed expenditure of GBP 22,400 exceeds the GBP 10,000 threshold specified in Finance Approval Matrix s2.1. This action requires formal approval from the Finance Director before proceeding.",
+    "BLOCK_select_supplier": "The proposed vendor is not on the organization's Approved Vendor List. Per procurement policy, all purchases must be made from pre-approved suppliers who have undergone due diligence and contract negotiation. This action is blocked to maintain supply chain integrity and compliance.",
+    "ALLOW_issue_purchase_order": "This administrative action executes a previously approved procurement decision. The purchase order issuance is permitted as it implements the authorized spend within established policy boundaries.",
+    "APPROVAL_select_supplier": "This action requires approval as the agent is operating in PROBATION band. All commercial decisions must be reviewed by a human approver until the agent demonstrates consistent policy compliance.",
+    "BLOCK_purchase_equipment": "This action requires a security review that has not been completed. Per Security Standards s3.1, all IT equipment purchases must undergo security assessment to ensure compliance with encryption and authentication requirements."
+  }
+}
