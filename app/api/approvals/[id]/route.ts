@@ -6,9 +6,10 @@ import { orchestrator } from '@/src/orchestrator/orchestrator';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     const { action, approvedBy } = body;
 
@@ -27,9 +28,9 @@ export async function POST(
     }
 
     if (action === 'approve') {
-      await orchestrator.approveAction(params.id, approvedBy);
+      await orchestrator.approveAction(id, approvedBy);
     } else {
-      await orchestrator.rejectAction(params.id, approvedBy);
+      await orchestrator.rejectAction(id, approvedBy);
     }
 
     return NextResponse.json({ success: true });
