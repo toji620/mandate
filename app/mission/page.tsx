@@ -264,6 +264,26 @@ function StepCard({ step }: { step: MissionStep }) {
           📋 {step.decision.sourcePassage}
         </div>
       )}
+
+      <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e5e5' }}>
+        <a
+          href="/recorder"
+          style={{
+            fontSize: '0.75rem',
+            color: '#3b82f6',
+            textDecoration: 'none',
+            fontWeight: 'bold',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.textDecoration = 'underline';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.textDecoration = 'none';
+          }}
+        >
+          📼 View in Flight Recorder →
+        </a>
+      </div>
     </div>
   );
 }

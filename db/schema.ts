@@ -41,34 +41,48 @@ export const approvers = pgTable('approvers', {
   approvalScope: text('approval_scope').notNull(),
 });
 
-// Actions table
+// Actions table (pending approvals)
 export const actions = pgTable('actions', {
-  id: serial('id').primaryKey(),
-  agentId: integer('agent_id').notNull().references(() => agents.id),
+  id: text('id').primaryKey(),
+  missionId: text('mission_id').notNull(),
+  stepNumber: integer('step_number').notNull(),
+  agentRole: text('agent_role').notNull(),
   actionType: text('action_type').notNull(),
-  payloadJson: jsonb('payload_json').notNull(),
-  riskClass: text('risk_class').notNull(),
+  actionPayload: jsonb('action_payload').notNull(),
+  status: text('status').notNull().default('pending'),
+  requestedAt: timestamp('requested_at').notNull().defaultNow(),
+  approvedBy: text('approved_by'),
+  approvedAt: timestamp('approved_at'),
 });
 
-// Decisions table
+// Decisions table (mission step decisions)
 export const decisions = pgTable('decisions', {
   id: serial('id').primaryKey(),
-  actionId: integer('action_id').notNull().references(() => actions.id),
+  missionId: text('mission_id').notNull(),
+  stepNumber: integer('step_number').notNull(),
+  agentRole: text('agent_role').notNull(),
+  actionType: text('action_type').notNull(),
+  actionPayload: jsonb('action_payload').notNull(),
   verdict: verdictEnum('verdict').notNull(),
-  ruleId: integer('rule_id').references(() => policyRules.id),
   explanation: text('explanation'),
-  decidedAt: timestamp('decided_at').notNull().defaultNow(),
+  sourcePassage: text('source_passage'),
+  riskClass: text('risk_class').notNull(),
+  agentBandBefore: autonomyBandEnum('agent_band_before').notNull(),
+  agentBandAfter: autonomyBandEnum('agent_band_after').notNull(),
+  timestamp: timestamp('timestamp').notNull().defaultNow(),
 });
 
 // Trust ledger table (append-only)
 export const trustLedger = pgTable('trust_ledger', {
   id: serial('id').primaryKey(),
-  agentId: integer('agent_id').notNull().references(() => agents.id),
-  eventType: eventTypeEnum('event_type').notNull(),
-  decisionId: integer('decision_id').references(() => decisions.id),
-  bandBefore: autonomyBandEnum('band_before').notNull(),
-  bandAfter: autonomyBandEnum('band_after').notNull(),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
+  agentRole: text('agent_role').notNull(),
+  event: text('event').notNull(),
+  fromBand: text('from_band').notNull(),
+  toBand: text('to_band').notNull(),
+  reason: text('reason').notNull(),
+  missionId: text('mission_id'),
+  stepNumber: integer('step_number'),
+  timestamp: timestamp('timestamp').notNull().defaultNow(),
 });
 
 // Type exports
