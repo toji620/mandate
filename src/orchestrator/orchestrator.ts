@@ -4,6 +4,12 @@ import { propose } from '@/src/agents/propose';
 import type { AgentRole } from '@/src/agents/agents';
 import type { ProposedAction, AgentState, PolicyRule } from '@/src/types';
 import type { MissionConfig, MissionStatus, MissionStep, PendingApproval, BandTransitionEvent } from './types';
+import {
+  saveDecision,
+  saveApproval,
+  updateApprovalStatus,
+  saveTrustLedgerEntry,
+} from './persistence';
 
 /**
  * Mission orchestrator - runs the procurement mission as a state machine
@@ -87,6 +93,9 @@ export class MissionOrchestrator {
     approval.resolvedAt = new Date();
     approval.resolvedBy = approvedBy;
 
+    // Persist approval status to database
+    await updateApprovalStatus(approvalId, 'approved', approvedBy);
+
     // Resume mission execution
     const mission = this.missions.get(approval.missionId);
     if (mission && mission.status === 'paused') {
@@ -108,6 +117,9 @@ export class MissionOrchestrator {
     approval.status = 'rejected';
     approval.resolvedAt = new Date();
     approval.resolvedBy = rejectedBy;
+
+    // Persist rejection to database
+    await updateApprovalStatus(approvalId, 'rejected', rejectedBy);
 
     // Mark mission as failed
     const mission = this.missions.get(approval.missionId);
@@ -194,6 +206,9 @@ export class MissionOrchestrator {
 
         mission.steps.push(step);
 
+        // Persist decision to database
+        await saveDecision(missionId, step);
+
         // Handle verdict
         if (decision.verdict === 'BLOCK') {
           // Record demotion
@@ -225,6 +240,9 @@ export class MissionOrchestrator {
           mission.pendingApprovals.push(approval);
           mission.status = 'paused';
 
+          // Persist approval to database
+          await saveApproval(approval);
+
           // Wait for approval (in real implementation, this would be event-driven)
           await this.waitForApproval(approval.id);
 
@@ -252,8 +270,20 @@ export class MissionOrchestrator {
         // Check for promotion
         const bandState = computeBand(ledgerEvents);
         if (bandState.currentBand !== agentState.autonomyBand) {
+          const oldBand = agentState.autonomyBand;
           agentState.autonomyBand = bandState.currentBand;
           step.agentStateAfter = { ...agentState };
+          
+          // Persist promotion to trust ledger
+          saveTrustLedgerEntry(
+            agentState.name,
+            'promotion',
+            oldBand,
+            bandState.currentBand,
+            'Earned promotion through clean actions',
+            missionId,
+            stepNumber
+          ).catch(err => console.error('Failed to save promotion:', err));
         }
 
       } catch (error) {
@@ -293,6 +323,17 @@ export class MissionOrchestrator {
         bandAfter: newBand,
         createdAt: new Date(),
       });
+
+      // Persist demotion to trust ledger
+      saveTrustLedgerEntry(
+        agentState.name,
+        'demotion',
+        currentBand,
+        newBand,
+        'Blocked action triggered demotion',
+        undefined,
+        stepNumber
+      ).catch(err => console.error('Failed to save demotion:', err));
 
       return {
         agentId: agentState.id,

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Navigation from "./components/Navigation";
 
 export const metadata: Metadata = {
   title: "Mandate",
@@ -12,7 +13,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body style={{ margin: 0, padding: 0, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+        <Navigation />
+        {children}
+      </body>
     </html>
   );
 }
