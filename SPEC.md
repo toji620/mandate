@@ -23,8 +23,7 @@ exercised.** LLMs propose and explain. They never decide.
 - Docling for offline policy-document parsing (output committed to repo, never run
   at request time)
 - GitHub Actions CI: lint + full Vitest suite on every push
-- No LangFlow. LangChain/LangGraph only if adopted for the orchestrator at Stage 3,
-  and only there.
+- No LangFlow. LangChain/LangGraph not adopted (plain TypeScript state machine chosen for orchestrator simplicity and maintainability).
 
 ## Domain model (Drizzle schemas)
 

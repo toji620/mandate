@@ -25,7 +25,7 @@ export async function explain(
 async function explainFixture(
   decision: Decision,
   action: ProposedAction,
-  rule: PolicyRule | undefined
+  _rule: PolicyRule | undefined
 ): Promise<string> {
   // Load fixture explanations
   const fixtures = await import('@/data/fixtures/explanations.json');
