@@ -316,8 +316,9 @@ export class MissionOrchestrator {
     verdict: 'ALLOW' | 'REVIEW' | 'APPROVAL',
     proposal: ProposedAction
   ): void {
+    const amount = proposal.payload.amount as unknown as number | undefined;
     const isSpendAction = proposal.actionType === 'commit_spend' || 
-                          (proposal.payload.amount !== undefined && proposal.payload.amount > 0);
+                          (amount !== undefined && amount !== null && amount > 0);
 
     ledgerEvents.push({
       eventType: 'CLEAN_ACTION',

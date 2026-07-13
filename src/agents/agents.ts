@@ -84,31 +84,28 @@ export async function proposeLive(
   }
 
   const { WatsonXAI } = await import('@ibm-cloud/watsonx-ai');
+  const { IamAuthenticator } = await import('ibm-cloud-sdk-core');
   
   const watsonxAI = WatsonXAI.newInstance({
     version: '2024-05-31',
     serviceUrl: url,
+    authenticator: new IamAuthenticator({ apikey: apiKey }),
   });
-
-  watsonxAI.setApiKey(apiKey);
 
   const roleConfig = AGENT_ROLES[role];
   const prompt = buildAgentPrompt(roleConfig, missionState);
 
   try {
-    const response = await watsonxAI.generateText({
-      input: prompt,
+    const response = await watsonxAI.textChat({
+      messages: [{ role: 'user', content: prompt }],
       modelId: 'ibm/granite-13b-chat-v2',
       projectId: projectId,
-      parameters: {
-        max_new_tokens: 500,
-        temperature: 0.7,
-        top_p: 0.9,
-        top_k: 50,
-      },
+      maxTokens: 500,
+      temperature: 0.7,
+      topP: 0.9,
     });
 
-    const generatedText = response.results?.[0]?.generated_text?.trim();
+    const generatedText = response.result.choices[0]?.message?.content?.trim();
     if (!generatedText) {
       throw new Error('No response from Granite');
     }
@@ -129,17 +126,15 @@ export async function proposeLive(
     // Retry once with a simpler prompt
     try {
       const retryPrompt = `${prompt}\n\nIMPORTANT: Respond with ONLY valid JSON, no other text.`;
-      const retryResponse = await watsonxAI.generateText({
-        input: retryPrompt,
+      const retryResponse = await watsonxAI.textChat({
+        messages: [{ role: 'user', content: retryPrompt }],
         modelId: 'ibm/granite-13b-chat-v2',
         projectId: projectId,
-        parameters: {
-          max_new_tokens: 300,
-          temperature: 0.5,
-        },
+        maxTokens: 300,
+        temperature: 0.5,
       });
 
-      const retryText = retryResponse.results?.[0]?.generated_text?.trim();
+      const retryText = retryResponse.result.choices[0]?.message?.content?.trim();
       if (!retryText) {
         throw new Error('No response from Granite on retry');
       }

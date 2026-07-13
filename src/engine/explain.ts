@@ -13,7 +13,7 @@ export async function explain(
   mode: ExplanationMode = 'fixture'
 ): Promise<string> {
   if (mode === 'fixture') {
-    return explainFixture(decision, action, rule);
+    return explainFixture(decision, action);
   }
   
   return explainLive(decision, action, rule);
@@ -24,15 +24,14 @@ export async function explain(
  */
 async function explainFixture(
   decision: Decision,
-  action: ProposedAction,
-  _rule: PolicyRule | undefined
+  action: ProposedAction
 ): Promise<string> {
   // Load fixture explanations
   const fixtures = await import('@/data/fixtures/explanations.json');
   
   // Find matching fixture by verdict and action type
   const key = `${decision.verdict}_${action.actionType}`;
-  const explanation = fixtures.explanations[key];
+  const explanation = (fixtures.explanations as Record<string, string>)[key];
   
   if (explanation) {
     return explanation;
@@ -61,30 +60,27 @@ async function explainLive(
 
   try {
     const { WatsonXAI } = await import('@ibm-cloud/watsonx-ai');
+    const { IamAuthenticator } = await import('ibm-cloud-sdk-core');
     
     const watsonxAI = WatsonXAI.newInstance({
       version: '2024-05-31',
       serviceUrl: url,
+      authenticator: new IamAuthenticator({ apikey: apiKey }),
     });
-
-    watsonxAI.setApiKey(apiKey);
 
     // Construct prompt that instructs Granite to explain, not override
     const prompt = buildExplanationPrompt(decision, action, rule);
 
-    const response = await watsonxAI.generateText({
-      input: prompt,
+    const response = await watsonxAI.textChat({
+      messages: [{ role: 'user', content: prompt }],
       modelId: 'ibm/granite-13b-chat-v2',
       projectId: projectId,
-      parameters: {
-        max_new_tokens: 200,
-        temperature: 0.7,
-        top_p: 0.9,
-        top_k: 50,
-      },
+      maxTokens: 200,
+      temperature: 0.7,
+      topP: 0.9,
     });
 
-    return response.results?.[0]?.generated_text?.trim() || decision.explanation;
+    return response.result.choices[0]?.message?.content?.trim() || decision.explanation;
   } catch (error) {
     console.error('Error calling watsonx.ai:', error);
     // Fallback to basic explanation on error
