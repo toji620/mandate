@@ -1,0 +1,17 @@
+{
+  "title": "Procurement Policy",
+  "sourceDocument": "Corporate Procurement Policy v3.0",
+  "sectionRef": "s1",
+  "rules": [
+    {
+      "ruleType": "VENDOR_APPROVAL",
+      "appliesTo": "all",
+      "sourcePassage": "Procurement Policy s1.1: All purchases must be made from approved vendors listed in the Approved Vendor List"
+    },
+    {
+      "ruleType": "SECURITY_REQUIREMENT",
+      "appliesTo": "IT equipment",
+      "sourcePassage": "Procurement Policy s1.3: All IT equipment purchases must comply with corporate security standards"
+    }
+  ]
+}

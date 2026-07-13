@@ -1,0 +1,27 @@
+{
+  "title": "Approved Vendor List",
+  "sourceDocument": "Approved Vendor List 2026 Q2",
+  "sectionRef": "IT Equipment Suppliers",
+  "rules": [
+    {
+      "ruleType": "VENDOR_APPROVAL",
+      "appliesTo": "Dell",
+      "sourcePassage": "Approved Vendor List: Dell is an approved supplier for IT equipment with established contract terms"
+    },
+    {
+      "ruleType": "VENDOR_APPROVAL",
+      "appliesTo": "HP",
+      "sourcePassage": "Approved Vendor List: HP is an approved supplier for IT equipment with established contract terms"
+    },
+    {
+      "ruleType": "VENDOR_APPROVAL",
+      "appliesTo": "Lenovo",
+      "sourcePassage": "Approved Vendor List: Lenovo is an approved supplier for IT equipment with established contract terms"
+    },
+    {
+      "ruleType": "VENDOR_APPROVAL",
+      "appliesTo": "Apple",
+      "sourcePassage": "Approved Vendor List: Apple is an approved supplier for IT equipment with established contract terms"
+    }
+  ]
+}

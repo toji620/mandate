@@ -1,0 +1,38 @@
+{
+  "name": "mandate",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:migrate": "drizzle-kit push",
+    "db:seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "next": "15.5.20",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "drizzle-orm": "^0.36.4",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.20",
+    "vitest": "^2.1.8",
+    "@vitest/ui": "^2.1.8",
+    "drizzle-kit": "^0.30.1",
+    "tsx": "^4.19.2",
+    "dotenv": "^16.4.7"
+  }
+}

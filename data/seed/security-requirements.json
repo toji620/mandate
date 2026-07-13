@@ -1,0 +1,22 @@
+{
+  "title": "Security Requirements",
+  "sourceDocument": "Corporate Security Standards v4.2",
+  "sectionRef": "s3",
+  "rules": [
+    {
+      "ruleType": "SECURITY_REQUIREMENT",
+      "appliesTo": "IT equipment",
+      "sourcePassage": "Security Standards s3.1: All IT equipment must support full-disk encryption and secure boot"
+    },
+    {
+      "ruleType": "SECURITY_REQUIREMENT",
+      "appliesTo": "laptops",
+      "sourcePassage": "Security Standards s3.2: All laptops must include TPM 2.0 chip and biometric authentication"
+    },
+    {
+      "ruleType": "SECURITY_REQUIREMENT",
+      "appliesTo": "all",
+      "sourcePassage": "Security Standards s3.5: All equipment purchases must be logged in the asset management system within 24 hours"
+    }
+  ]
+}

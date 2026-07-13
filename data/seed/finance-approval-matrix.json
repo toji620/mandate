@@ -1,0 +1,21 @@
+{
+  "title": "Finance Approval Matrix",
+  "sourceDocument": "Finance Approval Matrix v2.1",
+  "sectionRef": "s2.1",
+  "rules": [
+    {
+      "ruleType": "SPEND_THRESHOLD",
+      "thresholdValue": 10000,
+      "currency": "GBP",
+      "appliesTo": "all",
+      "sourcePassage": "Finance Approval Matrix s2.1: Expenditures exceeding GBP 10,000 require Finance Director approval"
+    },
+    {
+      "ruleType": "SPEND_THRESHOLD",
+      "thresholdValue": 50000,
+      "currency": "GBP",
+      "appliesTo": "all",
+      "sourcePassage": "Finance Approval Matrix s2.2: Expenditures exceeding GBP 50,000 require CFO approval"
+    }
+  ]
+}
