@@ -1,4 +1,5 @@
 import type { ProposedAction, AgentState } from '@/src/types';
+import { proposeLive as proposeLiveAgent, type AgentRole } from './agents';
 
 export interface MissionState {
   goal: string;
@@ -15,14 +16,19 @@ export type ProposalMode = 'live' | 'replay';
  */
 export async function propose(
   missionState: MissionState,
-  mode: ProposalMode = 'replay'
+  mode: ProposalMode = 'replay',
+  role?: AgentRole
 ): Promise<ProposedAction> {
   if (mode === 'replay') {
     return proposeReplay(missionState);
   }
   
-  // Live mode stub - to be implemented in Stage 2-3 with Granite
-  return proposeLive(missionState);
+  // Live mode requires a role
+  if (!role) {
+    throw new Error('Live mode requires an agent role to be specified');
+  }
+  
+  return proposeLiveAgent(role, missionState, missionState.agentState);
 }
 
 /**
@@ -44,12 +50,4 @@ async function proposeReplay(missionState: MissionState): Promise<ProposedAction
     payload: proposal.payload,
     riskClass: proposal.riskClass,
   };
-}
-
-/**
- * Live mode: calls Granite via watsonx.ai SDK (stub for Stage 2-3)
- */
-async function proposeLive(_missionState: MissionState): Promise<ProposedAction> {
-  // TODO: Implement in Stage 2-3 with watsonx.ai SDK
-  throw new Error('Live mode not yet implemented - use replay mode for now');
 }
