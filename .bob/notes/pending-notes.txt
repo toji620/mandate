@@ -1,0 +1,10 @@
+{"id":"a0290ba8-86e1-44b2-9d3a-92bd60448d47","ts":"2026-07-13T15:21:25.186Z","path":"/Users/abdullahkhanzada/mandate/src/engine/evaluate.ts","version":"1.0.0","taskID":"350b60fd-f500-4b8c-903b-cdced16d5b26"}
+{"id":"424ce03e-ec79-452d-85eb-c25015c77a4e","ts":"2026-07-13T15:22:22.871Z","path":"/Users/abdullahkhanzada/mandate/src/engine/evaluate.test.ts","version":"1.0.0","taskID":"350b60fd-f500-4b8c-903b-cdced16d5b26"}
+{"id":"44454c03-af9e-487b-bd11-2e4ce4458bf6","ts":"2026-07-13T15:22:54.495Z","path":"/Users/abdullahkhanzada/mandate/src/engine/evaluate.ts","version":"1.0.0","taskID":"350b60fd-f500-4b8c-903b-cdced16d5b26"}
+{"id":"a7ddc68f-1a16-45d3-b9eb-5ad46888f66d","ts":"2026-07-13T15:23:11.510Z","path":"/Users/abdullahkhanzada/mandate/src/engine/evaluate.ts","version":"1.0.0","taskID":"350b60fd-f500-4b8c-903b-cdced16d5b26"}
+{"id":"254fada9-1ae3-436e-b2d0-74473b167fde","ts":"2026-07-13T15:23:35.376Z","path":"/Users/abdullahkhanzada/mandate/.env.example","version":"1.0.0","taskID":"350b60fd-f500-4b8c-903b-cdced16d5b26"}
+{"id":"6612316e-d4b9-4ffb-aec4-fa43c4ed428b","ts":"2026-07-13T15:23:54.621Z","path":"/Users/abdullahkhanzada/mandate/src/engine/explain.ts","version":"1.0.0","taskID":"350b60fd-f500-4b8c-903b-cdced16d5b26"}
+{"id":"041059c0-b376-4a35-a260-a17ffc36f7ad","ts":"2026-07-13T15:24:09.469Z","path":"/Users/abdullahkhanzada/mandate/data/fixtures/explanations.json","version":"1.0.0","taskID":"350b60fd-f500-4b8c-903b-cdced16d5b26"}
+{"id":"215575a2-5846-4d61-b84a-eef510ef6a54","ts":"2026-07-13T15:24:23.472Z","path":"/Users/abdullahkhanzada/mandate/scripts/explain-demo.ts","version":"1.0.0","taskID":"350b60fd-f500-4b8c-903b-cdced16d5b26"}
+{"id":"e5452afc-dc13-4cb5-a5aa-5bed5481093f","ts":"2026-07-13T15:24:28.324Z","path":"/Users/abdullahkhanzada/mandate/package.json","version":"1.0.0","taskID":"350b60fd-f500-4b8c-903b-cdced16d5b26"}
+{"id":"baee9d7f-3f1a-447d-8f18-51ea2bf5cb65","ts":"2026-07-13T15:25:11.417Z","path":"/Users/abdullahkhanzada/mandate/BOB_USAGE.md","version":"1.0.0","taskID":"350b60fd-f500-4b8c-903b-cdced16d5b26"}

@@ -1,15 +1,23 @@
-import type { ProposedAction, AgentState, PolicyRule, Decision, AutonomyBand, BandTransition } from '@/src/types';
+import type { ProposedAction, AgentState, PolicyRule, Decision, AutonomyBand } from '@/src/types';
 
 /**
  * Pure evaluator function - no I/O, no database, no LLM calls, no clock, no randomness.
  * Same inputs always produce the same Decision.
+ * 
+ * Rule precedence (most restrictive wins):
+ * 1. BLOCK (unapproved vendor, missing security requirements)
+ * 2. APPROVAL (spend threshold exceeded)
+ * 3. REVIEW (commercial actions in SUPERVISED band)
+ * 4. ALLOW (within policy and band constraints)
  */
 export function evaluate(
   action: ProposedAction,
   agentState: AgentState,
   rules: PolicyRule[]
 ): Decision {
-  // Check for unapproved vendor usage FIRST (always blocks regardless of band)
+  // BLOCK checks first - these override everything
+  
+  // Check for unapproved vendor usage (always blocks regardless of band)
   const vendor = action.payload.vendor as string | undefined;
   if (vendor !== undefined) {
     const approvedVendors = rules
@@ -27,15 +35,33 @@ export function evaluate(
     }
   }
 
-  // Apply autonomy band constraints BEFORE spend thresholds
+  // Check for missing security requirements
+  const requiresSecurityReview = action.payload.requiresSecurityReview as boolean | undefined;
+  const hasSecurityReview = action.payload.hasSecurityReview as boolean | undefined;
+  
+  if (requiresSecurityReview === true && hasSecurityReview !== true) {
+    const securityRule = rules.find(r => r.ruleType === 'SECURITY_REQUIREMENT');
+    return {
+      verdict: 'BLOCK',
+      ruleId: securityRule?.id,
+      explanation: 'Action requires security review but none has been completed',
+      sourcePassage: securityRule?.sourcePassage || 'Security requirements must be met',
+    };
+  }
+
+  // Apply autonomy band constraints (band-specific rules checked before spend thresholds)
   if (agentState.autonomyBand === 'PROBATION') {
-    // In PROBATION, low-risk read actions and administrative actions are allowed
-    if (action.riskClass === 'low' && (action.actionType === 'gather_requirements' || action.actionType === 'request_quotations' || action.actionType === 'compare_vendors')) {
+    // In PROBATION, low-risk read actions are allowed
+    if (action.riskClass === 'low' && 
+        (action.actionType === 'gather_requirements' || 
+         action.actionType === 'request_quotations' || 
+         action.actionType === 'compare_vendors')) {
       return {
         verdict: 'ALLOW',
         explanation: 'Low-risk information gathering allowed in PROBATION band',
       };
     }
+    
     // Administrative actions like issuing POs (executing on approved decisions) are allowed
     if (action.actionType === 'issue_purchase_order') {
       return {
@@ -43,6 +69,7 @@ export function evaluate(
         explanation: 'Administrative action executing approved decision',
       };
     }
+    
     // Everything else requires approval in PROBATION
     return {
       verdict: 'APPROVAL',
@@ -51,15 +78,18 @@ export function evaluate(
   }
 
   if (agentState.autonomyBand === 'SUPERVISED') {
-    // Low-risk actions auto-allowed; anything with commercial effect requires approval
-    if (action.riskClass === 'low' || action.actionType === 'gather_requirements' || action.actionType === 'request_quotations' || action.actionType === 'compare_vendors') {
+    // Low-risk actions auto-allowed
+    if (action.riskClass === 'low' || 
+        action.actionType === 'gather_requirements' || 
+        action.actionType === 'request_quotations' || 
+        action.actionType === 'compare_vendors') {
       return {
         verdict: 'ALLOW',
         explanation: 'Low-risk action auto-allowed in SUPERVISED band',
       };
     }
     
-    // Supplier selection needs review (confirmation)
+    // Supplier selection needs review (confirmation) - checked before spend threshold
     if (action.actionType === 'select_supplier') {
       return {
         verdict: 'REVIEW',
@@ -71,17 +101,27 @@ export function evaluate(
     const spendAmount = action.payload.amount as number | undefined;
     if (spendAmount !== undefined) {
       const spendRule = rules.find(
-        r => r.ruleType === 'SPEND_THRESHOLD' && r.thresholdValue !== undefined
+        r => r.ruleType === 'SPEND_THRESHOLD' && 
+             r.thresholdValue !== undefined &&
+             spendAmount >= r.thresholdValue
       );
       
-      if (spendRule && spendAmount >= spendRule.thresholdValue!) {
+      if (spendRule) {
         return {
           verdict: 'APPROVAL',
           ruleId: spendRule.id,
-          explanation: `Spend amount ${spendAmount} ${spendRule.currency || 'GBP'} exceeds threshold of ${spendRule.thresholdValue} ${spendRule.currency || 'GBP'}`,
+          explanation: `Spend amount ${spendAmount} ${spendRule.currency || 'GBP'} meets or exceeds threshold of ${spendRule.thresholdValue} ${spendRule.currency || 'GBP'}`,
           sourcePassage: spendRule.sourcePassage,
         };
       }
+    }
+    
+    // Commercial actions with spend (but below threshold) need review
+    if (action.riskClass === 'high' || action.riskClass === 'medium') {
+      return {
+        verdict: 'REVIEW',
+        explanation: 'Commercial action requires review in SUPERVISED band',
+      };
     }
   }
 
@@ -90,14 +130,16 @@ export function evaluate(
     const spendAmount = action.payload.amount as number | undefined;
     if (spendAmount !== undefined) {
       const spendRule = rules.find(
-        r => r.ruleType === 'SPEND_THRESHOLD' && r.thresholdValue !== undefined
+        r => r.ruleType === 'SPEND_THRESHOLD' && 
+             r.thresholdValue !== undefined &&
+             spendAmount >= r.thresholdValue
       );
       
-      if (spendRule && spendAmount >= spendRule.thresholdValue!) {
+      if (spendRule) {
         return {
           verdict: 'APPROVAL',
           ruleId: spendRule.id,
-          explanation: `Spend amount ${spendAmount} ${spendRule.currency || 'GBP'} exceeds threshold of ${spendRule.thresholdValue} ${spendRule.currency || 'GBP'}`,
+          explanation: `Spend amount ${spendAmount} ${spendRule.currency || 'GBP'} meets or exceeds threshold of ${spendRule.thresholdValue} ${spendRule.currency || 'GBP'}`,
           sourcePassage: spendRule.sourcePassage,
         };
       }
@@ -118,15 +160,87 @@ export function evaluate(
 }
 
 /**
- * Computes band transitions based on agent history.
- * Pure function - deterministic based on inputs.
+ * Ledger event for band computation
+ */
+export interface LedgerEvent {
+  eventType: 'PROMOTION' | 'DEMOTION' | 'CLEAN_ACTION';
+  verdict?: 'ALLOW' | 'REVIEW' | 'APPROVAL' | 'BLOCK';
+  bandBefore: AutonomyBand;
+  bandAfter: AutonomyBand;
+  isSpendAction?: boolean;
+  createdAt: Date;
+}
+
+/**
+ * Computes the current autonomy band from trust ledger history.
+ * Pure function - deterministic based on ledger events.
+ * 
+ * Rules:
+ * - All agents start at PROBATION
+ * - 5 clean approved actions promote PROBATION -> SUPERVISED
+ * - 10 clean actions including 2 approved spend events promote SUPERVISED -> TRUSTED
+ * - Any BLOCK demotes exactly one band instantly
+ * - Clean action counts carry across demotions (agent can re-earn promotion)
+ * 
+ * @param ledgerEvents - Chronologically ordered ledger events (oldest first)
+ * @returns Current autonomy band and action counts
+ */
+export function computeBand(ledgerEvents: LedgerEvent[]): {
+  currentBand: AutonomyBand;
+  cleanActionCount: number;
+  approvedSpendCount: number;
+} {
+  let currentBand: AutonomyBand = 'PROBATION';
+  let cleanActionCount = 0;
+  let approvedSpendCount = 0;
+
+  for (const event of ledgerEvents) {
+    if (event.eventType === 'CLEAN_ACTION') {
+      cleanActionCount++;
+      
+      // Track approved spend actions
+      if (event.isSpendAction && (event.verdict === 'APPROVAL' || event.verdict === 'ALLOW')) {
+        approvedSpendCount++;
+      }
+      
+      // Check for promotion: PROBATION -> SUPERVISED after 5 clean actions
+      if (currentBand === 'PROBATION' && cleanActionCount >= 5) {
+        currentBand = 'SUPERVISED';
+      }
+      
+      // Check for promotion: SUPERVISED -> TRUSTED after 10 clean actions with 2 approved spends
+      if (currentBand === 'SUPERVISED' && cleanActionCount >= 10 && approvedSpendCount >= 2) {
+        currentBand = 'TRUSTED';
+      }
+    } else if (event.eventType === 'DEMOTION') {
+      // Demote exactly one band
+      if (currentBand === 'TRUSTED') {
+        currentBand = 'SUPERVISED';
+      } else if (currentBand === 'SUPERVISED') {
+        currentBand = 'PROBATION';
+      }
+      // Note: Clean action counts carry across demotions - agent can re-earn promotion
+    } else if (event.eventType === 'PROMOTION') {
+      // Explicit promotion event (should match computed promotion above)
+      currentBand = event.bandAfter;
+    }
+  }
+
+  return { currentBand, cleanActionCount, approvedSpendCount };
+}
+
+/**
+ * Legacy function for backward compatibility with existing tests.
+ * Computes a single band transition based on current state.
+ * 
+ * @deprecated Use computeBand() with full ledger history instead
  */
 export function computeBandTransition(
   currentBand: AutonomyBand,
   cleanActionCount: number,
   approvedSpendCount: number,
   wasBlocked: boolean
-): BandTransition | null {
+): { from: AutonomyBand; to: AutonomyBand; reason: string } | null {
   // Demotion: any BLOCK demotes exactly one band
   if (wasBlocked) {
     if (currentBand === 'TRUSTED') {
