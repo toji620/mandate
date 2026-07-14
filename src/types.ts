@@ -17,7 +17,8 @@ export interface AgentState {
   name: string;
   role: string;
   autonomyBand: AutonomyBand;
-  cleanActionCount: number;
+  /** Standing with the system: +1 per clean action, reset to 0 by a BLOCK. */
+  reputation: number;
   approvedSpendCount: number;
 }
 
@@ -29,6 +30,22 @@ export interface PolicyRule {
   currency?: string;
   appliesTo?: string;
   sourcePassage: string;
+}
+
+/** A spend a human has explicitly approved. */
+export interface ApprovedCommitment {
+  vendor?: string;
+  amount?: number;
+}
+
+/**
+ * What the evaluator is told about approvals already granted in this mission.
+ *
+ * Supplied by the orchestrator, never self-reported by the agent — an agent
+ * cannot claim its own spend was approved.
+ */
+export interface EvaluationContext {
+  priorApprovals: ApprovedCommitment[];
 }
 
 export interface Decision {

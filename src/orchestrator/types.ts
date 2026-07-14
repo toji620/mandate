@@ -1,4 +1,4 @@
-import type { ProposedAction, Decision, AgentState, AutonomyBand } from '@/src/types';
+import type { ProposedAction, Decision, AgentState, AutonomyBand, PolicyRule } from '@/src/types';
 
 export interface MissionConfig {
   goal: string;
@@ -25,6 +25,8 @@ export interface MissionStatus {
   steps: MissionStep[];
   pendingApprovals: PendingApproval[];
   context: Record<string, unknown>;
+  /** The policy rules this mission is being judged against, held for its whole life. */
+  rules: PolicyRule[];
   startedAt: Date;
   completedAt?: Date;
 }
@@ -33,8 +35,6 @@ export interface PendingApproval {
   id: string;
   missionId: string;
   stepNumber: number;
-  actionId: number;
-  decisionId: number;
   proposal: ProposedAction;
   decision: Decision;
   agentName: string;

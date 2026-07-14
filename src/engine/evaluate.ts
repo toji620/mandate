@@ -1,267 +1,343 @@
-import type { ProposedAction, AgentState, PolicyRule, Decision, AutonomyBand } from '@/src/types';
+import type {
+  ProposedAction,
+  AgentState,
+  PolicyRule,
+  Decision,
+  AutonomyBand,
+  Verdict,
+  EvaluationContext,
+} from '@/src/types';
 
 /**
- * Pure evaluator function - no I/O, no database, no LLM calls, no clock, no randomness.
- * Same inputs always produce the same Decision.
- * 
- * Rule precedence (most restrictive wins):
- * 1. BLOCK (unapproved vendor, missing security requirements)
- * 2. APPROVAL (spend threshold exceeded)
- * 3. REVIEW (commercial actions in SUPERVISED band)
- * 4. ALLOW (within policy and band constraints)
+ * The evaluator. Pure function: no I/O, no database, no LLM calls, no clock,
+ * no randomness. Same inputs always produce the same Decision.
+ *
+ * The core structure is deliberate. Two checks run independently:
+ *
+ *   policy — what the documents permit. Band-blind. ALWAYS runs.
+ *   band   — how much supervision this agent needs. Policy-blind.
+ *
+ * The verdict is whichever is STRICTER. A band rule therefore cannot loosen a
+ * policy rule, because `strictest` will not let it — no matter what bands or
+ * action types are added later. This is the SPEC guarantee made structural
+ * rather than conventional:
+ *
+ *   "The band tightens policy, never loosens it: a TRUSTED agent still cannot
+ *    exceed a spend threshold."
+ *
+ * Reputation buys an agent LESS SUPERVISION. It never buys MORE AUTHORITY.
  */
 export function evaluate(
   action: ProposedAction,
   agentState: AgentState,
-  rules: PolicyRule[]
+  rules: PolicyRule[],
+  context: EvaluationContext = { priorApprovals: [] }
 ): Decision {
-  // BLOCK checks first - these override everything
-  
-  // Check for unapproved vendor usage (always blocks regardless of band)
+  const policyVerdict = checkPolicy(action, rules, context);
+  const bandVerdict = checkBand(action, agentState, context);
+
+  return strictest(policyVerdict, bandVerdict);
+}
+
+// ---------------------------------------------------------------------------
+// Verdict ordering
+// ---------------------------------------------------------------------------
+
+const STRICTNESS: Record<Verdict, number> = {
+  ALLOW: 0,
+  REVIEW: 1,
+  APPROVAL: 2,
+  BLOCK: 3,
+};
+
+/** Returns whichever decision demands more human involvement. Ties go to `a`. */
+export function strictest(a: Decision, b: Decision): Decision {
+  return STRICTNESS[b.verdict] > STRICTNESS[a.verdict] ? b : a;
+}
+
+// ---------------------------------------------------------------------------
+// Action taxonomy
+// ---------------------------------------------------------------------------
+
+/**
+ * Actions that actually disburse funds when executed. Only these carry the
+ * spend threshold.
+ *
+ * `select_supplier` is deliberately absent: choosing a supplier PROPOSES a
+ * spend, it does not COMMIT one. The commitment happens at `commit_spend`.
+ * This is why golden-path step 4 is REVIEW rather than APPROVAL.
+ */
+export const SPEND_COMMITTING_ACTIONS = ['commit_spend', 'issue_purchase_order'];
+
+/** Read-only actions: they gather information and move no money. */
+export const READ_ONLY_ACTIONS = [
+  'gather_requirements',
+  'request_quotations',
+  'compare_vendors',
+  'check_spend_threshold',
+  'verify_vendor',
+  'security_review',
+];
+
+// ---------------------------------------------------------------------------
+// Policy layer — band-blind. What the documents permit.
+// ---------------------------------------------------------------------------
+
+function checkPolicy(
+  action: ProposedAction,
+  rules: PolicyRule[],
+  context: EvaluationContext
+): Decision {
+  // An unapproved vendor is barred outright, in every band, for every action.
   const vendor = action.payload.vendor as string | undefined;
   if (vendor !== undefined) {
-    const approvedVendors = rules
-      .filter(r => r.ruleType === 'VENDOR_APPROVAL')
-      .map(r => r.appliesTo);
-    
-    if (approvedVendors.length > 0 && !approvedVendors.includes(vendor)) {
-      const blockRule = rules.find(r => r.ruleType === 'VENDOR_APPROVAL');
+    const vendorRules = rules.filter((r) => r.ruleType === 'VENDOR_APPROVAL');
+    const approvedVendors = vendorRules.map((r) => r.appliesTo);
+
+    if (vendorRules.length > 0 && !approvedVendors.includes(vendor)) {
+      const citedRule = vendorRules[0];
       return {
         verdict: 'BLOCK',
-        ruleId: blockRule?.id,
+        ruleId: citedRule.id,
         explanation: `Vendor "${vendor}" is not on the approved vendor list`,
-        sourcePassage: blockRule?.sourcePassage || 'Approved vendor list',
+        sourcePassage: citedRule.sourcePassage,
       };
     }
   }
 
-  // Check for missing security requirements
+  // Equipment that needs a security sign-off cannot proceed without one.
   const requiresSecurityReview = action.payload.requiresSecurityReview as boolean | undefined;
   const hasSecurityReview = action.payload.hasSecurityReview as boolean | undefined;
-  
+
   if (requiresSecurityReview === true && hasSecurityReview !== true) {
-    const securityRule = rules.find(r => r.ruleType === 'SECURITY_REQUIREMENT');
+    const securityRule = rules.find((r) => r.ruleType === 'SECURITY_REQUIREMENT');
     return {
       verdict: 'BLOCK',
       ruleId: securityRule?.id,
       explanation: 'Action requires security review but none has been completed',
-      sourcePassage: securityRule?.sourcePassage || 'Security requirements must be met',
+      sourcePassage: securityRule?.sourcePassage ?? 'Security requirements must be met',
     };
   }
 
-  // Apply autonomy band constraints (band-specific rules checked before spend thresholds)
-  if (agentState.autonomyBand === 'PROBATION') {
-    // In PROBATION, low-risk read actions are allowed
-    if (action.riskClass === 'low' && 
-        (action.actionType === 'gather_requirements' || 
-         action.actionType === 'request_quotations' || 
-         action.actionType === 'compare_vendors')) {
-      return {
-        verdict: 'ALLOW',
-        explanation: 'Low-risk information gathering allowed in PROBATION band',
-      };
-    }
-    
-    // Administrative actions like issuing POs (executing on approved decisions) are allowed
-    if (action.actionType === 'issue_purchase_order') {
-      return {
-        verdict: 'ALLOW',
-        explanation: 'Administrative action executing approved decision',
-      };
-    }
-    
-    // Everything else requires approval in PROBATION
-    return {
-      verdict: 'APPROVAL',
-      explanation: 'Agent is in PROBATION band - action requires approval',
-    };
-  }
+  // Money over the threshold must reach a human — unless a human already
+  // approved this exact commitment, in which case executing it is paperwork,
+  // not a new decision.
+  if (SPEND_COMMITTING_ACTIONS.includes(action.actionType)) {
+    const amount = action.payload.amount as number | undefined;
 
-  if (agentState.autonomyBand === 'SUPERVISED') {
-    // Low-risk actions auto-allowed
-    if (action.riskClass === 'low' || 
-        action.actionType === 'gather_requirements' || 
-        action.actionType === 'request_quotations' || 
-        action.actionType === 'compare_vendors') {
-      return {
-        verdict: 'ALLOW',
-        explanation: 'Low-risk action auto-allowed in SUPERVISED band',
-      };
-    }
-    
-    // Supplier selection needs review (confirmation) - checked before spend threshold
-    if (action.actionType === 'select_supplier') {
-      return {
-        verdict: 'REVIEW',
-        explanation: 'Supplier selection requires review in SUPERVISED band',
-      };
-    }
-    
-    // Check spend thresholds for commercial actions
-    const spendAmount = action.payload.amount as number | undefined;
-    if (spendAmount !== undefined) {
-      const spendRule = rules.find(
-        r => r.ruleType === 'SPEND_THRESHOLD' && 
-             r.thresholdValue !== undefined &&
-             spendAmount >= r.thresholdValue
-      );
-      
+    if (amount !== undefined) {
+      // When several thresholds are crossed (e.g. GBP 10,000 -> Finance Director
+      // AND GBP 50,000 -> CFO), the binding one is the HIGHEST. Cite that, so the
+      // decision names the approver who actually has to sign.
+      const spendRule = rules
+        .filter(
+          (r) =>
+            r.ruleType === 'SPEND_THRESHOLD' &&
+            r.thresholdValue !== undefined &&
+            amount >= r.thresholdValue
+        )
+        .sort((a, b) => (b.thresholdValue ?? 0) - (a.thresholdValue ?? 0))[0];
+
       if (spendRule) {
+        if (hasMatchingApproval(action, context)) {
+          return {
+            verdict: 'ALLOW',
+            ruleId: spendRule.id,
+            explanation:
+              `Executes a commitment of ${amount} ${spendRule.currency ?? 'GBP'} to ` +
+              `"${action.payload.vendor}" that a human has already approved`,
+            sourcePassage: spendRule.sourcePassage,
+          };
+        }
+
         return {
           verdict: 'APPROVAL',
           ruleId: spendRule.id,
-          explanation: `Spend amount ${spendAmount} ${spendRule.currency || 'GBP'} meets or exceeds threshold of ${spendRule.thresholdValue} ${spendRule.currency || 'GBP'}`,
+          explanation:
+            `Spend of ${amount} ${spendRule.currency ?? 'GBP'} meets or exceeds the ` +
+            `${spendRule.thresholdValue} ${spendRule.currency ?? 'GBP'} threshold and ` +
+            `has not been approved by a human`,
           sourcePassage: spendRule.sourcePassage,
         };
       }
     }
-    
-    // Commercial actions with spend (but below threshold) need review
-    if (action.riskClass === 'high' || action.riskClass === 'medium') {
-      return {
-        verdict: 'REVIEW',
-        explanation: 'Commercial action requires review in SUPERVISED band',
-      };
-    }
   }
 
-  if (agentState.autonomyBand === 'TRUSTED') {
-    // Check spend thresholds
-    const spendAmount = action.payload.amount as number | undefined;
-    if (spendAmount !== undefined) {
-      const spendRule = rules.find(
-        r => r.ruleType === 'SPEND_THRESHOLD' && 
-             r.thresholdValue !== undefined &&
-             spendAmount >= r.thresholdValue
-      );
-      
-      if (spendRule) {
-        return {
-          verdict: 'APPROVAL',
-          ruleId: spendRule.id,
-          explanation: `Spend amount ${spendAmount} ${spendRule.currency || 'GBP'} meets or exceeds threshold of ${spendRule.thresholdValue} ${spendRule.currency || 'GBP'}`,
-          sourcePassage: spendRule.sourcePassage,
-        };
-      }
-    }
-    
-    // Auto-allowed up to policy thresholds
-    return {
-      verdict: 'ALLOW',
-      explanation: 'Action auto-allowed in TRUSTED band within policy limits',
-    };
-  }
-
-  // Default: allow low-risk actions
-  return {
-    verdict: 'ALLOW',
-    explanation: 'Action approved',
-  };
+  return { verdict: 'ALLOW', explanation: 'Action is within policy' };
 }
 
 /**
- * Ledger event for band computation
+ * True when a human has already approved this exact vendor and amount.
+ *
+ * Exact match on both, so an agent cannot inflate the amount or swap the vendor
+ * on a purchase order after the approval was granted.
  */
+function hasMatchingApproval(action: ProposedAction, context: EvaluationContext): boolean {
+  const vendor = action.payload.vendor as string | undefined;
+  const amount = action.payload.amount as number | undefined;
+
+  return context.priorApprovals.some(
+    (approved) => approved.vendor === vendor && approved.amount === amount
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Band layer — policy-blind. How closely this agent is watched.
+// ---------------------------------------------------------------------------
+
+function checkBand(
+  action: ProposedAction,
+  agentState: AgentState,
+  context: EvaluationContext
+): Decision {
+  // Executing a commitment a human already signed off does not need watching
+  // again. Re-asking is the alarm-fatigue failure: it trains approvers to click
+  // through without reading.
+  if (
+    SPEND_COMMITTING_ACTIONS.includes(action.actionType) &&
+    hasMatchingApproval(action, context)
+  ) {
+    return {
+      verdict: 'ALLOW',
+      explanation: 'Executes a commitment already approved by a human',
+    };
+  }
+
+  const isReadOnly = READ_ONLY_ACTIONS.includes(action.actionType);
+
+  switch (agentState.autonomyBand) {
+    case 'PROBATION':
+      // A new or demoted agent has earned nothing. Only reads go unwatched.
+      if (isReadOnly) {
+        return {
+          verdict: 'ALLOW',
+          explanation: 'Read-only action, no commercial effect',
+        };
+      }
+      return {
+        verdict: 'APPROVAL',
+        explanation:
+          'Agent is in the PROBATION band — every action with commercial effect requires approval',
+      };
+
+    case 'SUPERVISED':
+      // Low-risk work runs unwatched; anything commercial gets a human eye.
+      if (isReadOnly) {
+        return {
+          verdict: 'ALLOW',
+          explanation: 'Read-only action, no commercial effect',
+        };
+      }
+      return {
+        verdict: 'REVIEW',
+        explanation: 'Commercial action requires review in the SUPERVISED band',
+      };
+
+    case 'TRUSTED':
+      // Trust removes supervision. It does not remove policy — the policy layer
+      // has already run, and `strictest` will override this if policy says so.
+      return {
+        verdict: 'ALLOW',
+        explanation: 'Agent is TRUSTED — routine work proceeds without supervision',
+      };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Reputation and autonomy bands
+// ---------------------------------------------------------------------------
+
+/**
+ * Reputation needed to climb each band.
+ *
+ * NOTE ON THE SPEC: SPEC.md contradicts itself here. The band-transition table
+ * says 5 clean actions promote PROBATION -> SUPERVISED, while the golden-path
+ * table says the promotion fires at step 3. Both cannot hold in a 7-step
+ * mission. The golden path wins, because it is both the CI gate and the demo,
+ * and SPEC.md itself says "if a feature cannot survive the golden-path test, it
+ * does not ship." Hence 3.
+ */
+export const PROMOTION_THRESHOLDS = {
+  PROBATION_TO_SUPERVISED: 3,
+  SUPERVISED_TO_TRUSTED: 10,
+  SUPERVISED_TO_TRUSTED_SPENDS: 2,
+} as const;
+
 export interface LedgerEvent {
   eventType: 'PROMOTION' | 'DEMOTION' | 'CLEAN_ACTION';
-  verdict?: 'ALLOW' | 'REVIEW' | 'APPROVAL' | 'BLOCK';
+  verdict?: Verdict;
   bandBefore: AutonomyBand;
   bandAfter: AutonomyBand;
   isSpendAction?: boolean;
   createdAt: Date;
 }
 
-/**
- * Computes the current autonomy band from trust ledger history.
- * Pure function - deterministic based on ledger events.
- * 
- * Rules:
- * - All agents start at PROBATION
- * - 5 clean approved actions promote PROBATION -> SUPERVISED
- * - 10 clean actions including 2 approved spend events promote SUPERVISED -> TRUSTED
- * - Any BLOCK demotes exactly one band instantly
- * - Clean action counts carry across demotions (agent can re-earn promotion)
- * 
- * @param ledgerEvents - Chronologically ordered ledger events (oldest first)
- * @returns Current autonomy band and action counts
- */
-export function computeBand(ledgerEvents: LedgerEvent[]): {
+export interface BandState {
   currentBand: AutonomyBand;
-  cleanActionCount: number;
+  /** Standing with the system. Earned one action at a time; wiped by a BLOCK. */
+  reputation: number;
   approvedSpendCount: number;
-} {
+  /** Career total. Never reset — for display and audit only, never for permissions. */
+  lifetimeCleanActions: number;
+}
+
+/**
+ * Derives an agent's current band by replaying its trust ledger.
+ *
+ * Pure and deterministic: the same ledger always yields the same band, which is
+ * what makes the band auditable rather than merely asserted.
+ *
+ * Reputation rises by one per clean action and is RESET TO ZERO by a BLOCK.
+ * That reset is what gives a demotion teeth: without it, an agent that had
+ * already banked enough reputation would re-promote on its very next action,
+ * and the demotion would evaporate one step after it was imposed.
+ */
+export function computeBand(ledgerEvents: LedgerEvent[]): BandState {
   let currentBand: AutonomyBand = 'PROBATION';
-  let cleanActionCount = 0;
+  let reputation = 0;
   let approvedSpendCount = 0;
+  let lifetimeCleanActions = 0;
 
   for (const event of ledgerEvents) {
     if (event.eventType === 'CLEAN_ACTION') {
-      cleanActionCount++;
-      
-      // Track approved spend actions
+      reputation++;
+      lifetimeCleanActions++;
+
       if (event.isSpendAction && (event.verdict === 'APPROVAL' || event.verdict === 'ALLOW')) {
         approvedSpendCount++;
       }
-      
-      // Check for promotion: PROBATION -> SUPERVISED after 5 clean actions
-      if (currentBand === 'PROBATION' && cleanActionCount >= 5) {
+
+      if (
+        currentBand === 'PROBATION' &&
+        reputation >= PROMOTION_THRESHOLDS.PROBATION_TO_SUPERVISED
+      ) {
         currentBand = 'SUPERVISED';
       }
-      
-      // Check for promotion: SUPERVISED -> TRUSTED after 10 clean actions with 2 approved spends
-      if (currentBand === 'SUPERVISED' && cleanActionCount >= 10 && approvedSpendCount >= 2) {
+
+      if (
+        currentBand === 'SUPERVISED' &&
+        reputation >= PROMOTION_THRESHOLDS.SUPERVISED_TO_TRUSTED &&
+        approvedSpendCount >= PROMOTION_THRESHOLDS.SUPERVISED_TO_TRUSTED_SPENDS
+      ) {
         currentBand = 'TRUSTED';
       }
     } else if (event.eventType === 'DEMOTION') {
-      // Demote exactly one band
-      if (currentBand === 'TRUSTED') {
-        currentBand = 'SUPERVISED';
-      } else if (currentBand === 'SUPERVISED') {
-        currentBand = 'PROBATION';
-      }
-      // Note: Clean action counts carry across demotions - agent can re-earn promotion
+      currentBand = demote(currentBand);
+
+      // A block costs the agent its standing. It must earn the band back.
+      reputation = 0;
+      approvedSpendCount = 0;
     } else if (event.eventType === 'PROMOTION') {
-      // Explicit promotion event (should match computed promotion above)
       currentBand = event.bandAfter;
     }
   }
 
-  return { currentBand, cleanActionCount, approvedSpendCount };
+  return { currentBand, reputation, approvedSpendCount, lifetimeCleanActions };
 }
 
-/**
- * Legacy function for backward compatibility with existing tests.
- * Computes a single band transition based on current state.
- * 
- * @deprecated Use computeBand() with full ledger history instead
- */
-export function computeBandTransition(
-  currentBand: AutonomyBand,
-  cleanActionCount: number,
-  approvedSpendCount: number,
-  wasBlocked: boolean
-): { from: AutonomyBand; to: AutonomyBand; reason: string } | null {
-  // Demotion: any BLOCK demotes exactly one band
-  if (wasBlocked) {
-    if (currentBand === 'TRUSTED') {
-      return { from: 'TRUSTED', to: 'SUPERVISED', reason: 'Blocked action triggered demotion' };
-    }
-    if (currentBand === 'SUPERVISED') {
-      return { from: 'SUPERVISED', to: 'PROBATION', reason: 'Blocked action triggered demotion' };
-    }
-    // Already at PROBATION, can't demote further
-    return null;
-  }
-
-  // Promotion: PROBATION -> SUPERVISED after 5 clean actions
-  if (currentBand === 'PROBATION' && cleanActionCount >= 5) {
-    return { from: 'PROBATION', to: 'SUPERVISED', reason: '5 clean actions completed' };
-  }
-
-  // Promotion: SUPERVISED -> TRUSTED after 10 clean actions including 2 approved spends
-  if (currentBand === 'SUPERVISED' && cleanActionCount >= 10 && approvedSpendCount >= 2) {
-    return { from: 'SUPERVISED', to: 'TRUSTED', reason: '10 clean actions including 2 approved spends' };
-  }
-
-  return null;
+/** One band down. PROBATION is the floor. */
+export function demote(band: AutonomyBand): AutonomyBand {
+  if (band === 'TRUSTED') return 'SUPERVISED';
+  if (band === 'SUPERVISED') return 'PROBATION';
+  return 'PROBATION';
 }

@@ -1,30 +1,38 @@
 import { v4 as uuidv4 } from 'uuid';
-import { evaluate, computeBand, type LedgerEvent } from '@/src/engine/evaluate';
+import {
+  computeBand,
+  demote,
+  evaluate,
+  SPEND_COMMITTING_ACTIONS,
+  type LedgerEvent,
+} from '@/src/engine/evaluate';
 import { propose } from '@/src/agents/propose';
 import type { AgentRole } from '@/src/agents/agents';
-import type { ProposedAction, AgentState, PolicyRule } from '@/src/types';
-import type { MissionConfig, MissionStatus, MissionStep, PendingApproval, BandTransitionEvent } from './types';
-import {
-  saveDecision,
-  saveApproval,
-  updateApprovalStatus,
-  saveTrustLedgerEntry,
-} from './persistence';
+import type { AgentState, ApprovedCommitment, PolicyRule, ProposedAction } from '@/src/types';
+import type { MissionConfig, MissionStatus, MissionStep, PendingApproval } from './types';
+import { saveApproval, saveDecision, saveTrustLedgerEntry, updateApprovalStatus } from './persistence';
 
 /**
- * Mission orchestrator - runs the procurement mission as a state machine
- * propose → evaluate → record → (execute | queue for approval | block)
+ * Mission orchestrator: a plain TypeScript state machine running
+ *
+ *     propose -> evaluate -> record -> (execute | wait for a human | block)
+ *
+ * Exactly ONE execution loop runs per mission, for its whole life. When a step
+ * needs a human, the loop parks on a promise and resumes in place once the
+ * approval resolves. Approving does NOT start a second loop — that was a bug
+ * that ran two copies of the same mission side by side, the second of them with
+ * no policy rules loaded.
  */
 export class MissionOrchestrator {
   private missions: Map<string, MissionStatus> = new Map();
   private pendingApprovals: Map<string, PendingApproval> = new Map();
 
-  /**
-   * Start a new mission
-   */
+  /** Resolvers for approvals the execution loop is currently parked on. */
+  private approvalWaiters: Map<string, () => void> = new Map();
+
   async startMission(config: MissionConfig, rules: PolicyRule[]): Promise<string> {
     const missionId = uuidv4();
-    
+
     const mission: MissionStatus = {
       id: missionId,
       goal: config.goal,
@@ -33,205 +41,159 @@ export class MissionOrchestrator {
       currentStep: 0,
       steps: [],
       pendingApprovals: [],
-      context: config.initialContext || {},
+      context: config.initialContext ?? {},
+      rules,
       startedAt: new Date(),
     };
 
     this.missions.set(missionId, mission);
 
-    // Start execution in background
-    this.executeMission(missionId, rules).catch(error => {
+    this.executeMission(missionId).catch((error) => {
       console.error(`Mission ${missionId} failed:`, error);
       const m = this.missions.get(missionId);
-      if (m) {
-        m.status = 'failed';
-      }
+      if (m) m.status = 'failed';
     });
 
     return missionId;
   }
 
-  /**
-   * Get mission status
-   */
   getMission(missionId: string): MissionStatus | undefined {
     return this.missions.get(missionId);
   }
 
-  /**
-   * Get all missions
-   */
   getAllMissions(): MissionStatus[] {
     return Array.from(this.missions.values());
   }
 
-  /**
-   * Get pending approval
-   */
   getPendingApproval(approvalId: string): PendingApproval | undefined {
     return this.pendingApprovals.get(approvalId);
   }
 
-  /**
-   * Get all pending approvals for a mission
-   */
   getMissionApprovals(missionId: string): PendingApproval[] {
-    return Array.from(this.pendingApprovals.values())
-      .filter(a => a.missionId === missionId && a.status === 'pending');
+    return Array.from(this.pendingApprovals.values()).filter(
+      (a) => a.missionId === missionId && a.status === 'pending'
+    );
   }
 
   /**
-   * Approve a pending action
+   * Approve a pending action. This only records the human's decision and wakes
+   * the parked execution loop. It never starts a new one.
    */
   async approveAction(approvalId: string, approvedBy: string): Promise<void> {
-    const approval = this.pendingApprovals.get(approvalId);
-    if (!approval || approval.status !== 'pending') {
-      throw new Error('Approval not found or already resolved');
-    }
-
-    approval.status = 'approved';
-    approval.resolvedAt = new Date();
-    approval.resolvedBy = approvedBy;
-
-    // Persist approval status to database
-    await updateApprovalStatus(approvalId, 'approved', approvedBy);
-
-    // Resume mission execution
-    const mission = this.missions.get(approval.missionId);
-    if (mission && mission.status === 'paused') {
-      mission.status = 'running';
-      // Continue execution
-      this.executeMission(approval.missionId, []).catch(console.error);
-    }
+    await this.resolveApproval(approvalId, 'approved', approvedBy);
   }
 
-  /**
-   * Reject a pending action
-   */
   async rejectAction(approvalId: string, rejectedBy: string): Promise<void> {
+    await this.resolveApproval(approvalId, 'rejected', rejectedBy);
+  }
+
+  private async resolveApproval(
+    approvalId: string,
+    status: 'approved' | 'rejected',
+    resolvedBy: string
+  ): Promise<void> {
     const approval = this.pendingApprovals.get(approvalId);
     if (!approval || approval.status !== 'pending') {
       throw new Error('Approval not found or already resolved');
     }
 
-    approval.status = 'rejected';
+    approval.status = status;
     approval.resolvedAt = new Date();
-    approval.resolvedBy = rejectedBy;
+    approval.resolvedBy = resolvedBy;
 
-    // Persist rejection to database
-    await updateApprovalStatus(approvalId, 'rejected', rejectedBy);
+    await updateApprovalStatus(approvalId, status, resolvedBy);
 
-    // Mark mission as failed
-    const mission = this.missions.get(approval.missionId);
-    if (mission) {
-      mission.status = 'failed';
-    }
+    // Wake the loop parked on this approval. It picks the story up from here.
+    this.approvalWaiters.get(approvalId)?.();
+    this.approvalWaiters.delete(approvalId);
   }
 
   /**
-   * Execute the mission loop
+   * The single execution loop for a mission.
+   *
+   * Trust state lives here for the mission's whole life: the ledger is appended
+   * to, never rebuilt, and the band is re-derived from it before every step.
    */
-  private async executeMission(missionId: string, rules: PolicyRule[]): Promise<void> {
+  private async executeMission(missionId: string): Promise<void> {
     const mission = this.missions.get(missionId);
     if (!mission) return;
 
-    // Define the agent sequence for the laptop procurement mission
+    const rules = mission.rules;
+
+    /** Append-only. The band is a function of this and nothing else. */
+    const ledger: LedgerEvent[] = [];
+
+    /** Spends a human has actually signed off. The agent cannot write to this. */
+    const priorApprovals: ApprovedCommitment[] = [];
+
     const agentSequence: AgentRole[] = [
-      'sourcing',  // Step 1-3: gather requirements, request quotes, compare vendors
-      'sourcing',
-      'sourcing',
-      'sourcing',  // Step 4: select supplier
-      'procurement', // Step 5: commit spend
-      'sourcing',  // Step 6: try cheaper unapproved supplier (will be blocked)
-      'procurement', // Step 7: issue purchase order
+      'sourcing', // 1. gather requirements
+      'sourcing', // 2. request quotations
+      'sourcing', // 3. compare approved vendors
+      'sourcing', // 4. select preferred supplier
+      'procurement', // 5. commit the spend
+      'sourcing', // 6. try the cheaper unapproved supplier
+      'procurement', // 7. issue the purchase order
     ];
 
-    // Initialize agent state (starts in PROBATION)
-    const agentState: AgentState = {
-      id: 1,
-      name: 'Sourcing Agent',
-      role: 'sourcing',
-      autonomyBand: 'PROBATION',
-      cleanActionCount: 0,
-      approvedSpendCount: 0,
-    };
-
-    const ledgerEvents: LedgerEvent[] = [];
-
-    // Execute each step
-    for (let i = mission.currentStep; i < agentSequence.length; i++) {
-      if (mission.status !== 'running') {
-        break; // Paused or failed
-      }
-
+    for (let i = 0; i < agentSequence.length; i++) {
       const stepNumber = i + 1;
       const agentRole = agentSequence[i];
-      
       mission.currentStep = stepNumber;
 
-      // Update agent state from ledger
-      const bandState = computeBand(ledgerEvents);
-      agentState.autonomyBand = bandState.currentBand;
-      agentState.cleanActionCount = bandState.cleanActionCount;
-      agentState.approvedSpendCount = bandState.approvedSpendCount;
-
-      const agentStateBefore = { ...agentState };
+      // Derive the band from the ledger. Never carried forward by hand.
+      const before = computeBand(ledger);
+      const agentStateBefore: AgentState = {
+        id: 1,
+        name: 'Sourcing Agent',
+        role: agentRole,
+        autonomyBand: before.currentBand,
+        reputation: before.reputation,
+        approvedSpendCount: before.approvedSpendCount,
+      };
 
       try {
-        // Propose action
         const proposal = await propose(
           {
             goal: mission.goal,
             currentStep: stepNumber,
-            agentState,
+            agentState: agentStateBefore,
             context: mission.context,
           },
           mission.mode,
           mission.mode === 'live' ? agentRole : undefined
         );
 
-        // Evaluate action
-        const decision = evaluate(proposal, agentState, rules);
+        const decision = evaluate(proposal, agentStateBefore, rules, { priorApprovals });
 
-        // Record step
-        const step: MissionStep = {
-          stepNumber,
-          agentRole,
-          proposal,
-          decision,
-          agentStateBefore,
-          agentStateAfter: { ...agentState },
-          timestamp: new Date(),
-        };
-
-        mission.steps.push(step);
-
-        // Persist decision to database
-        await saveDecision(missionId, step);
-
-        // Handle verdict
         if (decision.verdict === 'BLOCK') {
-          // Record demotion
-          const transition = this.handleBlock(agentState, ledgerEvents, stepNumber);
-          if (transition) {
-            agentState.autonomyBand = transition.to;
-          }
-          
-          // Update context to note the block
-          mission.context.lastBlockedAction = proposal.actionType;
-          mission.context.lastBlockedReason = decision.explanation;
-          
-        } else if (decision.verdict === 'APPROVAL' || decision.verdict === 'REVIEW') {
-          // Create pending approval
+          const bandAfter = demote(before.currentBand);
+
+          ledger.push({
+            eventType: 'DEMOTION',
+            verdict: 'BLOCK',
+            bandBefore: before.currentBand,
+            bandAfter,
+            createdAt: new Date(),
+          });
+
+          await saveTrustLedgerEntry(
+            agentStateBefore.name,
+            'demotion',
+            before.currentBand,
+            bandAfter,
+            `Blocked action: ${decision.explanation}`,
+            missionId,
+            stepNumber
+          );
+        } else if (decision.verdict === 'REVIEW' || decision.verdict === 'APPROVAL') {
           const approval: PendingApproval = {
             id: uuidv4(),
             missionId,
             stepNumber,
-            actionId: 0, // Would be from DB in real implementation
-            decisionId: 0,
             proposal,
             decision,
-            agentName: agentState.name,
+            agentName: agentStateBefore.name,
             status: 'pending',
             createdAt: new Date(),
           };
@@ -240,52 +202,77 @@ export class MissionOrchestrator {
           mission.pendingApprovals.push(approval);
           mission.status = 'paused';
 
-          // Persist approval to database
           await saveApproval(approval);
 
-          // Wait for approval (in real implementation, this would be event-driven)
+          // Park here until a human decides. No second loop is started.
           await this.waitForApproval(approval.id);
 
-          const resolvedApproval = this.pendingApprovals.get(approval.id);
-          if (resolvedApproval?.status === 'approved') {
-            // Record clean action
-            this.recordCleanAction(agentState, ledgerEvents, stepNumber, decision.verdict, proposal);
-            
-            // Execute the action
-            this.executeAction(proposal, mission.context);
-          } else {
-            // Rejected - stop mission
+          const resolved = this.pendingApprovals.get(approval.id);
+
+          if (resolved?.status !== 'approved') {
             mission.status = 'failed';
+            this.recordStep(mission, {
+              stepNumber,
+              agentRole,
+              proposal,
+              decision,
+              agentStateBefore,
+              agentStateAfter: agentStateBefore,
+              timestamp: new Date(),
+            });
             return;
           }
-          
-        } else if (decision.verdict === 'ALLOW') {
-          // Record clean action
-          this.recordCleanAction(agentState, ledgerEvents, stepNumber, decision.verdict, proposal);
-          
-          // Execute the action
+
+          mission.status = 'running';
+
+          // A human signed this spend. The evaluator may now rely on it.
+          priorApprovals.push({
+            vendor: proposal.payload.vendor as string | undefined,
+            amount: proposal.payload.amount as number | undefined,
+          });
+
+          ledger.push(this.cleanAction(proposal, decision.verdict, before.currentBand));
+          this.executeAction(proposal, mission.context);
+        } else {
+          ledger.push(this.cleanAction(proposal, decision.verdict, before.currentBand));
           this.executeAction(proposal, mission.context);
         }
 
-        // Check for promotion
-        const bandState = computeBand(ledgerEvents);
-        if (bandState.currentBand !== agentState.autonomyBand) {
-          const oldBand = agentState.autonomyBand;
-          agentState.autonomyBand = bandState.currentBand;
-          step.agentStateAfter = { ...agentState };
-          
-          // Persist promotion to trust ledger
-          saveTrustLedgerEntry(
-            agentState.name,
+        const after = computeBand(ledger);
+        const agentStateAfter: AgentState = {
+          ...agentStateBefore,
+          autonomyBand: after.currentBand,
+          reputation: after.reputation,
+          approvedSpendCount: after.approvedSpendCount,
+        };
+
+        if (
+          after.currentBand !== before.currentBand &&
+          decision.verdict !== 'BLOCK' // demotion already logged above
+        ) {
+          await saveTrustLedgerEntry(
+            agentStateBefore.name,
             'promotion',
-            oldBand,
-            bandState.currentBand,
-            'Earned promotion through clean actions',
+            before.currentBand,
+            after.currentBand,
+            `Reputation reached ${after.reputation}`,
             missionId,
             stepNumber
-          ).catch(err => console.error('Failed to save promotion:', err));
+          );
         }
 
+        const step: MissionStep = {
+          stepNumber,
+          agentRole,
+          proposal,
+          decision,
+          agentStateBefore,
+          agentStateAfter,
+          timestamp: new Date(),
+        };
+
+        this.recordStep(mission, step);
+        await saveDecision(missionId, step, mission.goal);
       } catch (error) {
         console.error(`Step ${stepNumber} failed:`, error);
         mission.status = 'failed';
@@ -293,89 +280,31 @@ export class MissionOrchestrator {
       }
     }
 
-    // Mission complete
     mission.status = 'completed';
     mission.completedAt = new Date();
   }
 
-  /**
-   * Handle a BLOCK verdict - record demotion
-   */
-  private handleBlock(
-    agentState: AgentState,
-    ledgerEvents: LedgerEvent[],
-    stepNumber: number
-  ): BandTransitionEvent | null {
-    const currentBand = agentState.autonomyBand;
-    let newBand = currentBand;
-
-    if (currentBand === 'TRUSTED') {
-      newBand = 'SUPERVISED';
-    } else if (currentBand === 'SUPERVISED') {
-      newBand = 'PROBATION';
-    }
-
-    if (newBand !== currentBand) {
-      ledgerEvents.push({
-        eventType: 'DEMOTION',
-        verdict: 'BLOCK',
-        bandBefore: currentBand,
-        bandAfter: newBand,
-        createdAt: new Date(),
-      });
-
-      // Persist demotion to trust ledger
-      saveTrustLedgerEntry(
-        agentState.name,
-        'demotion',
-        currentBand,
-        newBand,
-        'Blocked action triggered demotion',
-        undefined,
-        stepNumber
-      ).catch(err => console.error('Failed to save demotion:', err));
-
-      return {
-        agentId: agentState.id,
-        from: currentBand,
-        to: newBand,
-        reason: 'Blocked action triggered demotion',
-        stepNumber,
-      };
-    }
-
-    return null;
+  private recordStep(mission: MissionStatus, step: MissionStep): void {
+    mission.steps.push(step);
   }
 
-  /**
-   * Record a clean action in the ledger
-   */
-  private recordCleanAction(
-    agentState: AgentState,
-    ledgerEvents: LedgerEvent[],
-    stepNumber: number,
+  private cleanAction(
+    proposal: ProposedAction,
     verdict: 'ALLOW' | 'REVIEW' | 'APPROVAL',
-    proposal: ProposedAction
-  ): void {
-    const amount = proposal.payload.amount as unknown as number | undefined;
-    const isSpendAction = proposal.actionType === 'commit_spend' || 
-                          (amount !== undefined && amount !== null && amount > 0);
-
-    ledgerEvents.push({
+    band: AgentState['autonomyBand']
+  ): LedgerEvent {
+    return {
       eventType: 'CLEAN_ACTION',
       verdict,
-      bandBefore: agentState.autonomyBand,
-      bandAfter: agentState.autonomyBand,
-      isSpendAction,
+      bandBefore: band,
+      bandAfter: band,
+      isSpendAction: SPEND_COMMITTING_ACTIONS.includes(proposal.actionType),
       createdAt: new Date(),
-    });
+    };
   }
 
-  /**
-   * Execute an action (stub - mutates mission context)
-   */
+  /** Sandboxed tools. Only run once the evaluator has cleared the action. */
   private executeAction(proposal: ProposedAction, context: Record<string, unknown>): void {
-    // Stub implementation - in real system, this would call sandboxed tools
     switch (proposal.actionType) {
       case 'gather_requirements':
         context.requirements = proposal.payload;
@@ -400,27 +329,15 @@ export class MissionOrchestrator {
     }
   }
 
-  /**
-   * Wait for approval (polling-based for simplicity)
-   */
-  private async waitForApproval(approvalId: string): Promise<void> {
-    return new Promise((resolve) => {
-      const checkInterval = setInterval(() => {
-        const approval = this.pendingApprovals.get(approvalId);
-        if (approval && approval.status !== 'pending') {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 100);
+  /** Parks the loop until a human resolves this approval. */
+  private waitForApproval(approvalId: string): Promise<void> {
+    const existing = this.pendingApprovals.get(approvalId);
+    if (existing && existing.status !== 'pending') return Promise.resolve();
 
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        resolve();
-      }, 5 * 60 * 1000);
+    return new Promise<void>((resolve) => {
+      this.approvalWaiters.set(approvalId, resolve);
     });
   }
 }
 
-// Singleton instance
 export const orchestrator = new MissionOrchestrator();
