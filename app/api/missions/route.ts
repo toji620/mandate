@@ -1,42 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { orchestrator } from '@/src/orchestrator/orchestrator';
-
-// Mock policy rules for now (in real app, would fetch from DB)
-const mockRules = [
-  {
-    id: 1,
-    policyId: 1,
-    ruleType: 'SPEND_THRESHOLD' as const,
-    thresholdValue: 10000,
-    currency: 'GBP',
-    appliesTo: 'all',
-    sourcePassage: 'Finance Approval Matrix s2.1: Expenditures exceeding GBP 10,000 require Finance Director approval',
-  },
-  {
-    id: 2,
-    policyId: 2,
-    ruleType: 'VENDOR_APPROVAL' as const,
-    appliesTo: 'Dell',
-    sourcePassage: 'Approved Vendor List: Dell is an approved supplier',
-  },
-  {
-    id: 3,
-    policyId: 2,
-    ruleType: 'VENDOR_APPROVAL' as const,
-    appliesTo: 'HP',
-    sourcePassage: 'Approved Vendor List: HP is an approved supplier',
-  },
-  {
-    id: 4,
-    policyId: 2,
-    ruleType: 'VENDOR_APPROVAL' as const,
-    appliesTo: 'Lenovo',
-    sourcePassage: 'Approved Vendor List: Lenovo is an approved supplier',
-  },
-];
+import { loadPolicyRules } from '@/src/policies/load';
 
 /**
- * GET /api/missions - List all missions
+ * GET /api/missions - list all missions
  */
 export async function GET() {
   const missions = orchestrator.getAllMissions();
@@ -44,7 +11,12 @@ export async function GET() {
 }
 
 /**
- * POST /api/missions - Start a new mission
+ * POST /api/missions - start a new mission
+ *
+ * The rules come from the policy library (Postgres, or the committed seed
+ * documents when it is down). They used to be a hardcoded array in this file,
+ * which meant the running app was never actually judged against the seeded
+ * policy — only against a copy of it that happened to agree.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -52,10 +24,7 @@ export async function POST(request: NextRequest) {
     const { goal, mode } = body;
 
     if (!goal || !mode) {
-      return NextResponse.json(
-        { error: 'Missing required fields: goal, mode' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required fields: goal, mode' }, { status: 400 });
     }
 
     if (mode !== 'live' && mode !== 'replay') {
@@ -65,14 +34,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const missionId = await orchestrator.startMission(
-      {
-        goal,
-        mode,
-        initialContext: {},
-      },
-      mockRules
-    );
+    const rules = await loadPolicyRules();
+
+    if (rules.length === 0) {
+      return NextResponse.json(
+        { error: 'No policy rules available. Run `npm run db:seed`.' },
+        { status: 500 }
+      );
+    }
+
+    const missionId = await orchestrator.startMission({ goal, mode, initialContext: {} }, rules);
 
     return NextResponse.json({ missionId });
   } catch (error) {

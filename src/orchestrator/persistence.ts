@@ -32,7 +32,8 @@ async function checkDbAvailable(): Promise<boolean> {
  */
 export async function saveDecision(
   missionId: string,
-  step: MissionStep
+  step: MissionStep,
+  missionGoal = ''
 ): Promise<void> {
   if (!(await checkDbAvailable())) {
     console.log('[Persistence] DB unavailable, skipping decision save');
@@ -42,20 +43,26 @@ export async function saveDecision(
   try {
     await db.insert(decisions).values({
       missionId,
+      missionGoal,
       stepNumber: step.stepNumber,
       agentRole: step.agentRole,
       actionType: step.proposal.actionType,
       actionPayload: step.proposal.payload,
       verdict: step.decision.verdict,
+      ruleId: step.decision.ruleId ?? null,
       explanation: step.decision.explanation,
       sourcePassage: step.decision.sourcePassage || null,
       riskClass: step.proposal.riskClass,
       agentBandBefore: step.agentStateBefore.autonomyBand,
       agentBandAfter: step.agentStateAfter.autonomyBand,
+      reputationBefore: step.agentStateBefore.reputation,
+      reputationAfter: step.agentStateAfter.reputation,
       timestamp: new Date(step.timestamp),
     });
-    
-    console.log(`[Persistence] Saved decision: mission=${missionId}, step=${step.stepNumber}, verdict=${step.decision.verdict}`);
+
+    console.log(
+      `[Persistence] Saved decision: mission=${missionId}, step=${step.stepNumber}, verdict=${step.decision.verdict}`
+    );
   } catch (error) {
     console.error('[Persistence] Failed to save decision:', error);
   }
@@ -172,10 +179,49 @@ export async function getDecisionsByMission(
       .from(decisions)
       .where(eq(decisions.missionId, missionId))
       .orderBy(decisions.stepNumber);
-    
+
     return results;
   } catch (error) {
     console.error('[Persistence] Failed to get decisions:', error);
+    return [];
+  }
+}
+
+/**
+ * Every decision ever recorded, newest first. This is what the Flight Recorder
+ * replays. Returns null (not []) when Postgres is down, so the caller can tell
+ * "database is empty" apart from "database is not there" and fall back to the
+ * in-memory mission history rather than showing a blank screen.
+ */
+export async function getAllDecisions(): Promise<Array<typeof decisions.$inferSelect> | null> {
+  if (!(await checkDbAvailable())) {
+    return null;
+  }
+
+  try {
+    return await db
+      .select()
+      .from(decisions)
+      .orderBy(desc(decisions.timestamp), desc(decisions.stepNumber));
+  } catch (error) {
+    console.error('[Persistence] Failed to get all decisions:', error);
+    return null;
+  }
+}
+
+/**
+ * The full trust ledger, oldest first. Append-only by construction: nothing in
+ * this file, or anywhere else in the codebase, updates or deletes from it.
+ */
+export async function getTrustLedger(): Promise<Array<typeof trustLedger.$inferSelect>> {
+  if (!(await checkDbAvailable())) {
+    return [];
+  }
+
+  try {
+    return await db.select().from(trustLedger).orderBy(trustLedger.timestamp);
+  } catch (error) {
+    console.error('[Persistence] Failed to get trust ledger:', error);
     return [];
   }
 }
