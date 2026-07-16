@@ -94,7 +94,7 @@ def main() -> int:
                 all_ok = False
 
     if all_ok:
-        print("\nEvery citation traces to a sentence in its source document. ✅")
+        print("\n[PASS] Every citation traces to a sentence in its source document.")
         return 0
 
     print("\nSome citations do not appear in their source. Fix the SEED JSON to", file=sys.stderr)
