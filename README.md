@@ -54,18 +54,21 @@ Agents earn promotions through clean execution and face instant demotion on poli
 
 1. **Agent Proposals** (IBM Granite via watsonx.ai SDK)
    - Structured action generation based on mission state
-   - Context-aware reasoning about business requirements
    - Cost-optimisation prompts that deliberately test policy boundaries
+   - Runs live with a watsonx key (`npm run mission:live`); CI and the demo use
+     recorded fixtures in replay mode, so the app runs fully without a key.
 
-2. **Policy Rule Extraction** (IBM Granite + Docling)
-   - Offline parsing of policy documents (procurement, finance, security)
-   - Extraction of thresholds, vendor lists, approval requirements
-   - Source passage preservation for citation display
+2. **Policy Document Parsing** (IBM Docling)
+   - Offline parsing of the source policy PDFs in `data/policies/` (`npm run policies:parse`)
+   - Every rule's `sourcePassage` is verified to appear verbatim in the
+     Docling-parsed text, so citations provably trace back to a real document
+   - Runs once, offline, never at request time; output committed to `data/seed/`
 
 3. **Decision Explanations** (IBM Granite)
-   - Natural language justification for each verdict
-   - Citation of specific policy rules and source passages
-   - Transparency for human reviewers
+   - Natural-language gloss on each verdict, shown next to the deterministic
+     reason on the Flight Recorder — it explains, it never overrides
+   - Live text needs a watsonx key; without one, a fixture explanation is shown
+     and labelled as such
 
 ### Key Design Decisions
 
@@ -108,76 +111,72 @@ See BOB_USAGE.md for detailed session logs.
 
 ### Prerequisites
 
-- Node.js 20+
-- Docker and Docker Compose
-- npm or yarn
+- **Node.js 20+** and **Docker** — required
+- **Python 3.11** — only for the optional Docling step
+- A **watsonx.ai API key** — only for live Granite; the app runs fully without one
 
-### Setup
+### Quick start (clone to running app)
 
-1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd mandate
+git clone <repository-url> && cd mandate
+npm install            # Node dependencies
+cp .env.example .env    # DB credentials work out of the box
+npm run db:up           # PostgreSQL 16 in Docker, on host port 5433
+npm run db:migrate      # create the tables
+npm run db:seed         # load the 4 policy documents (11 rules)
+npm run dev             # http://localhost:3000
 ```
 
-2. Install dependencies:
-```bash
-npm install
-```
+That is everything needed to see the full app — Policy Library, Mission Control,
+Approval Inbox, Flight Recorder — reading real PostgreSQL. Missions run in replay
+mode off committed fixtures, so **no API key is required**.
 
-3. Copy environment variables:
-```bash
-cp .env.example .env
-```
+> **Port note:** PostgreSQL is published on host port **5433**, not the usual
+> 5432, so it does not collide with a locally-installed PostgreSQL (a common
+> source of silent auth failures). `.env.example` is already set to 5433;
+> override `POSTGRES_PORT` if that port is taken too.
 
-4. Start PostgreSQL:
-```bash
-npm run db:up
-```
+### Tests
 
-5. Run migrations:
-```bash
-npm run db:migrate
-```
-
-6. Seed the database:
-```bash
-npm run db:seed
-```
-
-### Development
-
-Start the development server:
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-### Testing
-
-Run the test suite:
-```bash
-npm test
-```
-
-Run tests with UI:
-```bash
-npm run test:ui
-```
-
-### Linting
+No database, Docker, or API key needed:
 
 ```bash
+npm test          # full Vitest suite
 npm run lint
 ```
 
-### Database Management
+### Live Granite (optional — needs a watsonx key)
 
-- **Start database**: `npm run db:up`
-- **Stop database**: `npm run db:down`
-- **Run migrations**: `npm run db:migrate`
-- **Seed data**: `npm run db:seed`
+Set `WATSONX_API_KEY` and `WATSONX_PROJECT_ID` in `.env`, then:
+
+```bash
+npm run mission:live      # run the mission with Granite proposing each action
+npm run export:training   # export the evaluator-labelled preference dataset
+```
+
+### Docling policy parsing (optional — offline, one-time)
+
+Docling is a Python tool, so it uses its own virtual environment (never committed,
+like `node_modules`). Use a **fresh venv** so it cannot collide with a broken
+global Python install:
+
+```bash
+python -m venv .venv
+.venv/Scripts/pip install -r scripts/docling/requirements.txt   # Windows
+# .venv/bin/pip install -r scripts/docling/requirements.txt      # macOS/Linux
+npm run policies:pdf      # generate the source policy PDFs
+npm run policies:parse    # Docling parses them and verifies every citation
+```
+
+For the exact versions this was verified against, use
+`scripts/docling/requirements.lock.txt` instead.
+
+### Database management
+
+- **Start / stop**: `npm run db:up` / `npm run db:down`
+- **Migrate**: `npm run db:migrate`
+- **Seed**: `npm run db:seed`
+- **Reset** (fresh DB — recreates the container and re-seeds): `npm run db:reset`
 
 ## Project Structure
 
