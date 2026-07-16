@@ -212,6 +212,19 @@ describe('MissionOrchestrator', () => {
     throw new Error('mission did not fail after rejection');
   });
 
+  it('attaches an explanation to each step, labelled by its source', async () => {
+    const missionId = await orchestrator.startMission({ goal: GOAL, mode: 'replay' }, mockRules);
+    const mission = await runToCompletion(orchestrator, missionId);
+
+    const step1 = mission.steps[0];
+    // In replay mode with no key, the explanation comes from the fixtures and is
+    // labelled 'fixture' — never passed off as genuine Granite output.
+    expect(step1.graniteExplanation).toBeTruthy();
+    expect(step1.explanationSource).toBe('fixture');
+    // The fixture gloss is richer than the terse deterministic reason.
+    expect(step1.graniteExplanation).not.toBe(step1.decision.explanation);
+  });
+
   it('records the purchase order as executing an already-approved commitment', async () => {
     const missionId = await orchestrator.startMission({ goal: GOAL, mode: 'replay' }, mockRules);
     const mission = await runToCompletion(orchestrator, missionId);

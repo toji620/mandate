@@ -51,6 +51,8 @@ export async function saveDecision(
       verdict: step.decision.verdict,
       ruleId: step.decision.ruleId ?? null,
       explanation: step.decision.explanation,
+      graniteExplanation: step.graniteExplanation ?? null,
+      explanationSource: step.explanationSource ?? null,
       sourcePassage: step.decision.sourcePassage || null,
       riskClass: step.proposal.riskClass,
       agentBandBefore: step.agentStateBefore.autonomyBand,
