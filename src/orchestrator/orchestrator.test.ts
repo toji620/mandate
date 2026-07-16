@@ -1,7 +1,24 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { MissionOrchestrator } from './orchestrator';
+import { MissionOrchestrator, type TrustStore } from './orchestrator';
 import type { PolicyRule } from '@/src/types';
 import type { MissionStatus } from './types';
+import type { LedgerEvent } from '@/src/engine/evaluate';
+
+/**
+ * An in-memory trust ledger so these tests never touch Postgres. Without it,
+ * `loadLedger` would pull whatever history is really in the database and the
+ * agent would not start fresh — the tests must be deterministic and DB-free.
+ */
+function memoryTrustStore(): TrustStore & { events: LedgerEvent[] } {
+  const events: LedgerEvent[] = [];
+  return {
+    events,
+    load: async () => [...events],
+    append: async (_role, _version, event) => {
+      events.push(event);
+    },
+  };
+}
 
 const GOAL = 'Purchase 20 developer laptops for under GBP 25,000, delivered by Friday';
 
@@ -71,6 +88,9 @@ describe('MissionOrchestrator', () => {
 
   beforeEach(() => {
     orchestrator = new MissionOrchestrator();
+    // Isolate every test from the real database with a fresh in-memory ledger,
+    // so each mission starts the agent at PROBATION unless the test says otherwise.
+    orchestrator.setTrustStore(memoryTrustStore());
   });
 
   it('starts a mission in replay mode', async () => {
@@ -212,5 +232,45 @@ describe('MissionOrchestrator', () => {
 
     expect(mission.context.testKey).toBe('testValue');
     expect(mission.context.committedVendor).toBe('Dell');
+  });
+});
+
+describe('trust persists across missions', () => {
+  it('starts a second mission with the reputation earned in the first', async () => {
+    const orchestrator = new MissionOrchestrator();
+    // One store shared across both missions — this is the whole point.
+    orchestrator.setTrustStore(memoryTrustStore());
+
+    const first = await orchestrator.startMission({ goal: GOAL, mode: 'replay' }, mockRules);
+    await runToCompletion(orchestrator, first);
+
+    // Mission 1 ends with clean actions recorded in the ledger. Mission 2 must
+    // NOT start the agent from a blank slate — the ledger carries over.
+    const second = await orchestrator.startMission({ goal: GOAL, mode: 'replay' }, mockRules);
+    const m2 = orchestrator.getMission(second)!;
+
+    for (let i = 0; i < 200 && m2.steps.length === 0; i++) await tick();
+
+    expect(m2.steps[0].agentStateBefore.reputation).toBeGreaterThan(0);
+  });
+
+  it('does NOT carry trust between different agent configurations', async () => {
+    // Two orchestrators with SEPARATE stores stand in for two different agent
+    // versions (e.g. base model vs a fine-tuned model). A fresh config starts
+    // at zero — trust does not leak from one model to another.
+    const a = new MissionOrchestrator();
+    a.setTrustStore(memoryTrustStore());
+    const first = await a.startMission({ goal: GOAL, mode: 'replay' }, mockRules);
+    await runToCompletion(a, first);
+
+    const b = new MissionOrchestrator();
+    b.setTrustStore(memoryTrustStore()); // different store = different config's history
+    const fresh = await b.startMission({ goal: GOAL, mode: 'replay' }, mockRules);
+    const mb = b.getMission(fresh)!;
+
+    for (let i = 0; i < 200 && mb.steps.length === 0; i++) await tick();
+
+    expect(mb.steps[0].agentStateBefore.reputation).toBe(0);
+    expect(mb.steps[0].agentStateBefore.autonomyBand).toBe('PROBATION');
   });
 });
