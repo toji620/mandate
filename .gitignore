@@ -41,3 +41,7 @@ next-env.d.ts
 
 # exported training data (regenerated from the decisions in Postgres)
 /data/training/
+
+# python virtual environment for the Docling scripts (rebuilt from
+# scripts/docling/requirements.txt — never committed, like node_modules)
+/.venv/
