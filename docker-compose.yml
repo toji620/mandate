@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16
@@ -9,7 +7,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mandate}
       POSTGRES_DB: ${POSTGRES_DB:-mandate}
     ports:
-      - "5432:5432"
+      # 5433 on the host, not 5432: a locally-installed PostgreSQL commonly
+      # already holds 5432, and it silently shadows this container — connections
+      # reach the wrong database and fail to authenticate. Override with
+      # POSTGRES_PORT if 5433 is taken too.
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - mandate-postgres-data:/var/lib/postgresql/data
     healthcheck:

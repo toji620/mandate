@@ -1,0 +1,17 @@
+# Docling policy-document parsing (offline, one-time — never at request time).
+#
+# Install into a FRESH virtual environment so it cannot collide with a broken
+# global Python install:
+#
+#   python -m venv .venv
+#   .venv/Scripts/pip install -r scripts/docling/requirements.txt   (Windows)
+#   .venv/bin/pip     install -r scripts/docling/requirements.txt   (macOS/Linux)
+#
+# --extra-index-url provides CPU-only torch wheels, so no CUDA/GPU is required.
+# For the exact versions this project was verified against, use
+# requirements.lock.txt instead.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+docling>=2.0.0
+reportlab>=4.0.0

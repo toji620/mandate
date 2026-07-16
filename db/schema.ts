@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, jsonb, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, timestamp, jsonb, pgEnum, boolean } from 'drizzle-orm/pg-core';
 
 // Enums
 export const autonomyBandEnum = pgEnum('autonomy_band', ['PROBATION', 'SUPERVISED', 'TRUSTED']);
@@ -59,24 +59,42 @@ export const actions = pgTable('actions', {
 export const decisions = pgTable('decisions', {
   id: serial('id').primaryKey(),
   missionId: text('mission_id').notNull(),
+  missionGoal: text('mission_goal').notNull().default(''),
   stepNumber: integer('step_number').notNull(),
   agentRole: text('agent_role').notNull(),
   actionType: text('action_type').notNull(),
   actionPayload: jsonb('action_payload').notNull(),
   verdict: verdictEnum('verdict').notNull(),
+  // SPEC: "Every Decision carries the id of the rule that fired." Without this
+  // the Flight Recorder can quote a policy passage but cannot link back to the
+  // rule it came from.
+  ruleId: integer('rule_id'),
   explanation: text('explanation'),
+  // Granite's readable gloss, SEPARATE from `explanation` (the evaluator's
+  // deterministic, authoritative reason). An LLM never overwrites the reason a
+  // decision was made. explanation_source records where the gloss came from.
+  graniteExplanation: text('granite_explanation'),
+  explanationSource: text('explanation_source'), // 'granite' | 'fixture'
   sourcePassage: text('source_passage'),
   riskClass: text('risk_class').notNull(),
   agentBandBefore: autonomyBandEnum('agent_band_before').notNull(),
   agentBandAfter: autonomyBandEnum('agent_band_after').notNull(),
+  reputationBefore: integer('reputation_before').notNull().default(0),
+  reputationAfter: integer('reputation_after').notNull().default(0),
   timestamp: timestamp('timestamp').notNull().defaultNow(),
 });
 
-// Trust ledger table (append-only)
+// Trust ledger table (append-only: no UPDATE or DELETE path exists anywhere)
 export const trustLedger = pgTable('trust_ledger', {
   id: serial('id').primaryKey(),
   agentRole: text('agent_role').notNull(),
-  event: text('event').notNull(),
+  // The agent CONFIGURATION this evidence is about (role + model + prompt hash).
+  // Reputation earned by one prompt/model does not transfer to another — this is
+  // what makes a fine-tuned model re-earn trust rather than inherit it.
+  agentVersion: text('agent_version').notNull().default('legacy'),
+  event: text('event').notNull(), // clean_action | promotion | demotion
+  verdict: text('verdict'), // the verdict that produced a clean_action
+  isSpendAction: boolean('is_spend_action').notNull().default(false),
   fromBand: text('from_band').notNull(),
   toBand: text('to_band').notNull(),
   reason: text('reason').notNull(),

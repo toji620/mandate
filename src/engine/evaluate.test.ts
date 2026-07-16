@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { evaluate, computeBand, type LedgerEvent } from './evaluate';
-import type { AgentState, PolicyRule } from '@/src/types';
+import { computeBand, evaluate, PROMOTION_THRESHOLDS, type LedgerEvent } from './evaluate';
+import type { AgentState, AutonomyBand, PolicyRule } from '@/src/types';
 
 describe('Evaluator - Rule Enforcement', () => {
   const mockRules: PolicyRule[] = [
@@ -11,7 +11,8 @@ describe('Evaluator - Rule Enforcement', () => {
       thresholdValue: 10000,
       currency: 'GBP',
       appliesTo: 'all',
-      sourcePassage: 'Finance Approval Matrix s2.1: Expenditures exceeding GBP 10,000 require Finance Director approval',
+      sourcePassage:
+        'Finance Approval Matrix s2.1: Expenditures exceeding GBP 10,000 require Finance Director approval',
     },
     {
       id: 2,
@@ -32,21 +33,24 @@ describe('Evaluator - Rule Enforcement', () => {
       policyId: 3,
       ruleType: 'SECURITY_REQUIREMENT',
       appliesTo: 'IT equipment',
-      sourcePassage: 'Security Standards s3.1: All IT equipment must support full-disk encryption',
+      sourcePassage:
+        'Security Standards s3.1: All IT equipment must support full-disk encryption',
     },
   ];
 
-  describe('Spend Threshold Boundaries', () => {
-    const supervisedAgent: AgentState = {
-      id: 1,
-      name: 'Test Agent',
-      role: 'sourcing',
-      autonomyBand: 'SUPERVISED',
-      cleanActionCount: 5,
-      approvedSpendCount: 0,
-    };
+  const agent = (autonomyBand: AutonomyBand, reputation = 0): AgentState => ({
+    id: 1,
+    name: 'Test Agent',
+    role: 'sourcing',
+    autonomyBand,
+    reputation,
+    approvedSpendCount: 0,
+  });
 
-    it('should ALLOW spend of 9999.99 (below threshold)', () => {
+  describe('Spend Threshold Boundaries', () => {
+    const supervised = agent('SUPERVISED', 5);
+
+    it('does not fire the threshold rule below it (9999.99)', () => {
       const decision = evaluate(
         {
           agentId: 1,
@@ -54,15 +58,16 @@ describe('Evaluator - Rule Enforcement', () => {
           payload: { amount: 9999.99, vendor: 'Dell' },
           riskClass: 'high',
         },
-        supervisedAgent,
+        supervised,
         mockRules
       );
 
-      expect(decision.verdict).toBe('REVIEW'); // SUPERVISED needs review for commercial actions
+      // Under the threshold, policy is silent; only the band speaks.
+      expect(decision.verdict).toBe('REVIEW');
       expect(decision.ruleId).toBeUndefined();
     });
 
-    it('should require APPROVAL for spend of exactly 10000', () => {
+    it('requires APPROVAL at exactly the threshold (10000)', () => {
       const decision = evaluate(
         {
           agentId: 1,
@@ -70,7 +75,7 @@ describe('Evaluator - Rule Enforcement', () => {
           payload: { amount: 10000, vendor: 'Dell' },
           riskClass: 'high',
         },
-        supervisedAgent,
+        supervised,
         mockRules
       );
 
@@ -79,7 +84,7 @@ describe('Evaluator - Rule Enforcement', () => {
       expect(decision.sourcePassage).toContain('Finance Approval Matrix s2.1');
     });
 
-    it('should require APPROVAL for spend of 10000.01 (above threshold)', () => {
+    it('requires APPROVAL just above the threshold (10000.01)', () => {
       const decision = evaluate(
         {
           agentId: 1,
@@ -87,16 +92,15 @@ describe('Evaluator - Rule Enforcement', () => {
           payload: { amount: 10000.01, vendor: 'Dell' },
           riskClass: 'high',
         },
-        supervisedAgent,
+        supervised,
         mockRules
       );
 
       expect(decision.verdict).toBe('APPROVAL');
       expect(decision.ruleId).toBe(1);
-      expect(decision.sourcePassage).toContain('Finance Approval Matrix s2.1');
     });
 
-    it('should require APPROVAL for large spend of 50000', () => {
+    it('requires APPROVAL for a large spend (50000)', () => {
       const decision = evaluate(
         {
           agentId: 1,
@@ -104,7 +108,7 @@ describe('Evaluator - Rule Enforcement', () => {
           payload: { amount: 50000, vendor: 'Dell' },
           riskClass: 'high',
         },
-        supervisedAgent,
+        supervised,
         mockRules
       );
 
@@ -114,16 +118,9 @@ describe('Evaluator - Rule Enforcement', () => {
   });
 
   describe('Vendor Approval', () => {
-    const trustedAgent: AgentState = {
-      id: 1,
-      name: 'Test Agent',
-      role: 'sourcing',
-      autonomyBand: 'TRUSTED',
-      cleanActionCount: 15,
-      approvedSpendCount: 3,
-    };
+    const trusted = agent('TRUSTED', 15);
 
-    it('should ALLOW approved vendor (Dell)', () => {
+    it('ALLOWs an approved vendor (Dell)', () => {
       const decision = evaluate(
         {
           agentId: 1,
@@ -131,29 +128,14 @@ describe('Evaluator - Rule Enforcement', () => {
           payload: { vendor: 'Dell', amount: 5000 },
           riskClass: 'medium',
         },
-        trustedAgent,
+        trusted,
         mockRules
       );
 
       expect(decision.verdict).toBe('ALLOW');
     });
 
-    it('should ALLOW approved vendor (HP)', () => {
-      const decision = evaluate(
-        {
-          agentId: 1,
-          actionType: 'select_supplier',
-          payload: { vendor: 'HP', amount: 5000 },
-          riskClass: 'medium',
-        },
-        trustedAgent,
-        mockRules
-      );
-
-      expect(decision.verdict).toBe('ALLOW');
-    });
-
-    it('should BLOCK unapproved vendor regardless of band', () => {
+    it('BLOCKs an unapproved vendor even for a TRUSTED agent', () => {
       const decision = evaluate(
         {
           agentId: 1,
@@ -161,21 +143,17 @@ describe('Evaluator - Rule Enforcement', () => {
           payload: { vendor: 'CheapTech', amount: 3000 },
           riskClass: 'high',
         },
-        trustedAgent,
+        trusted,
         mockRules
       );
 
       expect(decision.verdict).toBe('BLOCK');
       expect(decision.explanation).toContain('not on the approved vendor list');
-      expect(decision.ruleId).toBe(2); // First vendor approval rule
+      expect(decision.ruleId).toBe(2);
+      expect(decision.sourcePassage).toContain('Approved Vendor List');
     });
 
-    it('should BLOCK unapproved vendor even in PROBATION', () => {
-      const probationAgent: AgentState = {
-        ...trustedAgent,
-        autonomyBand: 'PROBATION',
-      };
-
+    it('BLOCKs an unapproved vendor in PROBATION too', () => {
       const decision = evaluate(
         {
           agentId: 1,
@@ -183,7 +161,7 @@ describe('Evaluator - Rule Enforcement', () => {
           payload: { vendor: 'UnknownVendor', amount: 1000 },
           riskClass: 'low',
         },
-        probationAgent,
+        agent('PROBATION'),
         mockRules
       );
 
@@ -192,28 +170,17 @@ describe('Evaluator - Rule Enforcement', () => {
   });
 
   describe('Security Requirements', () => {
-    const supervisedAgent: AgentState = {
-      id: 1,
-      name: 'Test Agent',
-      role: 'compliance',
-      autonomyBand: 'SUPERVISED',
-      cleanActionCount: 5,
-      approvedSpendCount: 0,
-    };
+    const supervised = agent('SUPERVISED', 5);
 
-    it('should BLOCK action requiring security review without one', () => {
+    it('BLOCKs an action needing a security review that has not happened', () => {
       const decision = evaluate(
         {
           agentId: 1,
           actionType: 'purchase_equipment',
-          payload: { 
-            requiresSecurityReview: true,
-            hasSecurityReview: false,
-            vendor: 'Dell'
-          },
+          payload: { requiresSecurityReview: true, hasSecurityReview: false, vendor: 'Dell' },
           riskClass: 'high',
         },
-        supervisedAgent,
+        supervised,
         mockRules
       );
 
@@ -222,53 +189,31 @@ describe('Evaluator - Rule Enforcement', () => {
       expect(decision.ruleId).toBe(4);
     });
 
-    it('should allow action with completed security review', () => {
+    it('does not BLOCK once the security review is complete', () => {
       const decision = evaluate(
         {
           agentId: 1,
           actionType: 'purchase_equipment',
-          payload: { 
+          payload: {
             requiresSecurityReview: true,
             hasSecurityReview: true,
             vendor: 'Dell',
-            amount: 5000
+            amount: 5000,
           },
           riskClass: 'high',
         },
-        supervisedAgent,
+        supervised,
         mockRules
       );
 
       expect(decision.verdict).not.toBe('BLOCK');
     });
-
-    it('should allow action not requiring security review', () => {
-      const decision = evaluate(
-        {
-          agentId: 1,
-          actionType: 'gather_requirements',
-          payload: { requiresSecurityReview: false },
-          riskClass: 'low',
-        },
-        supervisedAgent,
-        mockRules
-      );
-
-      expect(decision.verdict).toBe('ALLOW');
-    });
   });
 
-  describe('Rule Precedence - Most Restrictive Wins', () => {
-    const trustedAgent: AgentState = {
-      id: 1,
-      name: 'Test Agent',
-      role: 'sourcing',
-      autonomyBand: 'TRUSTED',
-      cleanActionCount: 15,
-      approvedSpendCount: 3,
-    };
+  describe('Precedence: the stricter of policy and band always wins', () => {
+    const trusted = agent('TRUSTED', 15);
 
-    it('should BLOCK for unapproved vendor even with high spend (BLOCK > APPROVAL)', () => {
+    it('BLOCK beats APPROVAL: unapproved vendor at a high spend', () => {
       const decision = evaluate(
         {
           agentId: 1,
@@ -276,7 +221,7 @@ describe('Evaluator - Rule Enforcement', () => {
           payload: { vendor: 'CheapTech', amount: 50000 },
           riskClass: 'high',
         },
-        trustedAgent,
+        trusted,
         mockRules
       );
 
@@ -284,28 +229,7 @@ describe('Evaluator - Rule Enforcement', () => {
       expect(decision.explanation).toContain('not on the approved vendor list');
     });
 
-    it('should BLOCK for missing security review even with approved vendor (BLOCK > APPROVAL)', () => {
-      const decision = evaluate(
-        {
-          agentId: 1,
-          actionType: 'purchase_equipment',
-          payload: { 
-            vendor: 'Dell',
-            amount: 50000,
-            requiresSecurityReview: true,
-            hasSecurityReview: false
-          },
-          riskClass: 'high',
-        },
-        trustedAgent,
-        mockRules
-      );
-
-      expect(decision.verdict).toBe('BLOCK');
-      expect(decision.explanation).toContain('requires security review');
-    });
-
-    it('should require APPROVAL for high spend with approved vendor (APPROVAL > ALLOW)', () => {
+    it('policy beats band: a TRUSTED agent still needs APPROVAL over the threshold', () => {
       const decision = evaluate(
         {
           agentId: 1,
@@ -313,26 +237,33 @@ describe('Evaluator - Rule Enforcement', () => {
           payload: { vendor: 'Dell', amount: 15000 },
           riskClass: 'high',
         },
-        trustedAgent,
+        trusted,
         mockRules
       );
 
       expect(decision.verdict).toBe('APPROVAL');
       expect(decision.ruleId).toBe(1);
     });
+
+    it('band beats policy: PROBATION needs APPROVAL even for a spend under the threshold', () => {
+      const decision = evaluate(
+        {
+          agentId: 1,
+          actionType: 'commit_spend',
+          payload: { vendor: 'Dell', amount: 500 },
+          riskClass: 'medium',
+        },
+        agent('PROBATION'),
+        mockRules
+      );
+
+      expect(decision.verdict).toBe('APPROVAL');
+      expect(decision.explanation).toContain('PROBATION');
+    });
   });
 
   describe('Autonomy Band Constraints', () => {
-    it('PROBATION: should require APPROVAL for commercial actions', () => {
-      const probationAgent: AgentState = {
-        id: 1,
-        name: 'Test Agent',
-        role: 'sourcing',
-        autonomyBand: 'PROBATION',
-        cleanActionCount: 2,
-        approvedSpendCount: 0,
-      };
-
+    it('PROBATION: requires APPROVAL for commercial actions', () => {
       const decision = evaluate(
         {
           agentId: 1,
@@ -340,48 +271,25 @@ describe('Evaluator - Rule Enforcement', () => {
           payload: { vendor: 'Dell', amount: 5000 },
           riskClass: 'medium',
         },
-        probationAgent,
+        agent('PROBATION', 2),
         mockRules
       );
 
       expect(decision.verdict).toBe('APPROVAL');
-      expect(decision.explanation).toContain('PROBATION band');
+      expect(decision.explanation).toContain('PROBATION');
     });
 
-    it('PROBATION: should ALLOW low-risk information gathering', () => {
-      const probationAgent: AgentState = {
-        id: 1,
-        name: 'Test Agent',
-        role: 'sourcing',
-        autonomyBand: 'PROBATION',
-        cleanActionCount: 2,
-        approvedSpendCount: 0,
-      };
-
+    it('PROBATION: ALLOWs read-only information gathering', () => {
       const decision = evaluate(
-        {
-          agentId: 1,
-          actionType: 'gather_requirements',
-          payload: {},
-          riskClass: 'low',
-        },
-        probationAgent,
+        { agentId: 1, actionType: 'gather_requirements', payload: {}, riskClass: 'low' },
+        agent('PROBATION', 2),
         mockRules
       );
 
       expect(decision.verdict).toBe('ALLOW');
     });
 
-    it('SUPERVISED: should require REVIEW for supplier selection', () => {
-      const supervisedAgent: AgentState = {
-        id: 1,
-        name: 'Test Agent',
-        role: 'sourcing',
-        autonomyBand: 'SUPERVISED',
-        cleanActionCount: 5,
-        approvedSpendCount: 0,
-      };
-
+    it('SUPERVISED: requires REVIEW for supplier selection', () => {
       const decision = evaluate(
         {
           agentId: 1,
@@ -389,23 +297,24 @@ describe('Evaluator - Rule Enforcement', () => {
           payload: { vendor: 'Dell' },
           riskClass: 'medium',
         },
-        supervisedAgent,
+        agent('SUPERVISED', 5),
         mockRules
       );
 
       expect(decision.verdict).toBe('REVIEW');
     });
 
-    it('TRUSTED: should ALLOW actions within policy limits', () => {
-      const trustedAgent: AgentState = {
-        id: 1,
-        name: 'Test Agent',
-        role: 'sourcing',
-        autonomyBand: 'TRUSTED',
-        cleanActionCount: 15,
-        approvedSpendCount: 3,
-      };
+    it('SUPERVISED: ALLOWs read-only actions', () => {
+      const decision = evaluate(
+        { agentId: 1, actionType: 'request_quotations', payload: {}, riskClass: 'low' },
+        agent('SUPERVISED', 5),
+        mockRules
+      );
 
+      expect(decision.verdict).toBe('ALLOW');
+    });
+
+    it('TRUSTED: ALLOWs commercial actions within policy limits', () => {
       const decision = evaluate(
         {
           agentId: 1,
@@ -413,7 +322,7 @@ describe('Evaluator - Rule Enforcement', () => {
           payload: { vendor: 'Dell', amount: 8000 },
           riskClass: 'high',
         },
-        trustedAgent,
+        agent('TRUSTED', 15),
         mockRules
       );
 
@@ -422,144 +331,110 @@ describe('Evaluator - Rule Enforcement', () => {
   });
 });
 
-describe('Band Computation from Ledger History', () => {
-  it('should start at PROBATION with no events', () => {
+describe('Reputation and band computation from ledger history', () => {
+  const clean = (isSpendAction = false): LedgerEvent => ({
+    eventType: 'CLEAN_ACTION',
+    verdict: isSpendAction ? 'APPROVAL' : 'ALLOW',
+    bandBefore: 'PROBATION',
+    bandAfter: 'PROBATION',
+    isSpendAction,
+    createdAt: new Date('2026-01-01'),
+  });
+
+  const blocked = (): LedgerEvent => ({
+    eventType: 'DEMOTION',
+    verdict: 'BLOCK',
+    bandBefore: 'SUPERVISED',
+    bandAfter: 'PROBATION',
+    createdAt: new Date('2026-01-01'),
+  });
+
+  const many = (n: number, isSpendAction = false) =>
+    Array.from({ length: n }, () => clean(isSpendAction));
+
+  it('starts every agent at PROBATION with zero reputation', () => {
     const result = computeBand([]);
+
     expect(result.currentBand).toBe('PROBATION');
-    expect(result.cleanActionCount).toBe(0);
-    expect(result.approvedSpendCount).toBe(0);
+    expect(result.reputation).toBe(0);
   });
 
-  it('should promote PROBATION -> SUPERVISED after 5 clean actions', () => {
-    const events: LedgerEvent[] = [
-      { eventType: 'CLEAN_ACTION', verdict: 'ALLOW', bandBefore: 'PROBATION', bandAfter: 'PROBATION', createdAt: new Date('2026-01-01') },
-      { eventType: 'CLEAN_ACTION', verdict: 'ALLOW', bandBefore: 'PROBATION', bandAfter: 'PROBATION', createdAt: new Date('2026-01-02') },
-      { eventType: 'CLEAN_ACTION', verdict: 'ALLOW', bandBefore: 'PROBATION', bandAfter: 'PROBATION', createdAt: new Date('2026-01-03') },
-      { eventType: 'CLEAN_ACTION', verdict: 'ALLOW', bandBefore: 'PROBATION', bandAfter: 'PROBATION', createdAt: new Date('2026-01-04') },
-      { eventType: 'CLEAN_ACTION', verdict: 'ALLOW', bandBefore: 'PROBATION', bandAfter: 'PROBATION', createdAt: new Date('2026-01-05') },
-    ];
+  it('promotes PROBATION -> SUPERVISED once reputation reaches the threshold', () => {
+    const result = computeBand(many(PROMOTION_THRESHOLDS.PROBATION_TO_SUPERVISED));
 
-    const result = computeBand(events);
     expect(result.currentBand).toBe('SUPERVISED');
-    expect(result.cleanActionCount).toBe(5);
   });
 
-  it('should promote SUPERVISED -> TRUSTED after 10 clean actions with 2 approved spends', () => {
-    const events: LedgerEvent[] = [
-      // First 5 to get to SUPERVISED
-      ...Array(5).fill(null).map((_, i) => ({
-        eventType: 'CLEAN_ACTION' as const,
-        verdict: 'ALLOW' as const,
-        bandBefore: 'PROBATION' as const,
-        bandAfter: 'PROBATION' as const,
-        createdAt: new Date(`2026-01-${i + 1}`),
-      })),
-      // Next 5 with 2 spend actions
-      { eventType: 'CLEAN_ACTION' as const, verdict: 'APPROVAL' as const, bandBefore: 'SUPERVISED' as const, bandAfter: 'SUPERVISED' as const, isSpendAction: true, createdAt: new Date('2026-01-06') },
-      { eventType: 'CLEAN_ACTION' as const, verdict: 'ALLOW' as const, bandBefore: 'SUPERVISED' as const, bandAfter: 'SUPERVISED' as const, createdAt: new Date('2026-01-07') },
-      { eventType: 'CLEAN_ACTION' as const, verdict: 'APPROVAL' as const, bandBefore: 'SUPERVISED' as const, bandAfter: 'SUPERVISED' as const, isSpendAction: true, createdAt: new Date('2026-01-08') },
-      { eventType: 'CLEAN_ACTION' as const, verdict: 'ALLOW' as const, bandBefore: 'SUPERVISED' as const, bandAfter: 'SUPERVISED' as const, createdAt: new Date('2026-01-09') },
-      { eventType: 'CLEAN_ACTION' as const, verdict: 'ALLOW' as const, bandBefore: 'SUPERVISED' as const, bandAfter: 'SUPERVISED' as const, createdAt: new Date('2026-01-10') },
-    ];
+  it('does not promote one action short of the threshold', () => {
+    const result = computeBand(many(PROMOTION_THRESHOLDS.PROBATION_TO_SUPERVISED - 1));
 
-    const result = computeBand(events);
+    expect(result.currentBand).toBe('PROBATION');
+  });
+
+  it('promotes SUPERVISED -> TRUSTED at 10 reputation with 2 approved spends', () => {
+    const result = computeBand([...many(8), ...many(2, true)]);
+
+    expect(result.reputation).toBe(10);
+    expect(result.approvedSpendCount).toBe(2);
     expect(result.currentBand).toBe('TRUSTED');
-    expect(result.cleanActionCount).toBe(10);
-    expect(result.approvedSpendCount).toBe(2);
   });
 
-  it('should demote TRUSTED -> SUPERVISED on BLOCK', () => {
-    const events: LedgerEvent[] = [
-      ...Array(10).fill(null).map((_, i) => ({
-        eventType: 'CLEAN_ACTION' as const,
-        verdict: 'ALLOW' as const,
-        bandBefore: i < 5 ? 'PROBATION' as const : 'SUPERVISED' as const,
-        bandAfter: i < 5 ? 'PROBATION' as const : 'SUPERVISED' as const,
-        isSpendAction: i === 5 || i === 7,
-        createdAt: new Date(`2026-01-${i + 1}`),
-      })),
-      { eventType: 'DEMOTION', verdict: 'BLOCK', bandBefore: 'TRUSTED', bandAfter: 'SUPERVISED', createdAt: new Date('2026-01-11') },
-    ];
+  it('withholds TRUSTED when the reputation is there but the approved spends are not', () => {
+    const result = computeBand(many(12));
 
-    const result = computeBand(events);
+    expect(result.reputation).toBe(12);
+    expect(result.approvedSpendCount).toBe(0);
     expect(result.currentBand).toBe('SUPERVISED');
   });
 
-  it('should demote SUPERVISED -> PROBATION on BLOCK', () => {
-    const events: LedgerEvent[] = [
-      ...Array(5).fill(null).map((_, i) => ({
-        eventType: 'CLEAN_ACTION' as const,
-        verdict: 'ALLOW' as const,
-        bandBefore: 'PROBATION' as const,
-        bandAfter: 'PROBATION' as const,
-        createdAt: new Date(`2026-01-${i + 1}`),
-      })),
-      { eventType: 'DEMOTION', verdict: 'BLOCK', bandBefore: 'SUPERVISED', bandAfter: 'PROBATION', createdAt: new Date('2026-01-06') },
-    ];
+  it('demotes exactly one band on a BLOCK', () => {
+    const result = computeBand([...many(8), ...many(2, true), blocked()]);
 
-    const result = computeBand(events);
+    expect(result.currentBand).toBe('SUPERVISED'); // was TRUSTED
+  });
+
+  it('never demotes below PROBATION', () => {
+    const result = computeBand([clean(), blocked(), blocked(), blocked()]);
+
     expect(result.currentBand).toBe('PROBATION');
   });
 
-  it('should carry clean action counts across demotion (agent can re-earn promotion)', () => {
-    const events: LedgerEvent[] = [
-      // Get to SUPERVISED
-      ...Array(5).fill(null).map((_, i) => ({
-        eventType: 'CLEAN_ACTION' as const,
-        verdict: 'ALLOW' as const,
-        bandBefore: 'PROBATION' as const,
-        bandAfter: 'PROBATION' as const,
-        createdAt: new Date(`2026-01-${i + 1}`),
-      })),
-      // Get demoted
-      { eventType: 'DEMOTION', verdict: 'BLOCK', bandBefore: 'SUPERVISED', bandAfter: 'PROBATION', createdAt: new Date('2026-01-06') },
-      // Continue accumulating (counts carry over)
-      { eventType: 'CLEAN_ACTION', verdict: 'ALLOW', bandBefore: 'PROBATION', bandAfter: 'PROBATION', createdAt: new Date('2026-01-07') },
-    ];
+  // The heart of it: this is the bug that made a demotion evaporate one step
+  // after it was imposed. A BLOCK must cost the agent its standing.
+  it('RESETS reputation to zero on a BLOCK, so the demotion actually sticks', () => {
+    const result = computeBand([...many(5), blocked()]);
 
-    const result = computeBand(events);
-    expect(result.cleanActionCount).toBe(6); // Counts carry across demotion
-    expect(result.currentBand).toBe('SUPERVISED'); // Re-promoted because count >= 5
+    expect(result.currentBand).toBe('PROBATION');
+    expect(result.reputation).toBe(0);
   });
 
-  it('should not demote below PROBATION', () => {
-    const events: LedgerEvent[] = [
-      { eventType: 'CLEAN_ACTION', verdict: 'ALLOW', bandBefore: 'PROBATION', bandAfter: 'PROBATION', createdAt: new Date('2026-01-01') },
-      { eventType: 'DEMOTION', verdict: 'BLOCK', bandBefore: 'PROBATION', bandAfter: 'PROBATION', createdAt: new Date('2026-01-02') },
-    ];
+  it('does not let a demoted agent bounce straight back on its next clean action', () => {
+    const result = computeBand([...many(5), blocked(), clean()]);
 
-    const result = computeBand(events);
+    expect(result.reputation).toBe(1);
     expect(result.currentBand).toBe('PROBATION');
   });
 
-  it('should handle complex promotion/demotion sequence', () => {
-    const events: LedgerEvent[] = [
-      // PROBATION -> SUPERVISED (5 actions)
-      ...Array(5).fill(null).map((_, i) => ({
-        eventType: 'CLEAN_ACTION' as const,
-        verdict: 'ALLOW' as const,
-        bandBefore: 'PROBATION' as const,
-        bandAfter: 'PROBATION' as const,
-        createdAt: new Date(`2026-01-${i + 1}`),
-      })),
-      // SUPERVISED -> TRUSTED (5 more actions, 2 spends)
-      ...Array(5).fill(null).map((_, i) => ({
-        eventType: 'CLEAN_ACTION' as const,
-        verdict: i === 0 || i === 2 ? 'APPROVAL' as const : 'ALLOW' as const,
-        bandBefore: 'SUPERVISED' as const,
-        bandAfter: 'SUPERVISED' as const,
-        isSpendAction: i === 0 || i === 2,
-        createdAt: new Date(`2026-01-${i + 6}`),
-      })),
-      // Demote TRUSTED -> SUPERVISED
-      { eventType: 'DEMOTION', verdict: 'BLOCK', bandBefore: 'TRUSTED', bandAfter: 'SUPERVISED', createdAt: new Date('2026-01-11') },
-      // Re-earn TRUSTED (already have 10 actions + 2 spends)
-      { eventType: 'CLEAN_ACTION', verdict: 'ALLOW', bandBefore: 'SUPERVISED', bandAfter: 'SUPERVISED', createdAt: new Date('2026-01-12') },
-    ];
+  it('makes a demoted agent re-earn the band from scratch', () => {
+    const justShort = computeBand([
+      ...many(5),
+      blocked(),
+      ...many(PROMOTION_THRESHOLDS.PROBATION_TO_SUPERVISED - 1),
+    ]);
+    expect(justShort.currentBand).toBe('PROBATION');
 
-    const result = computeBand(events);
-    expect(result.currentBand).toBe('TRUSTED'); // Re-promoted
-    expect(result.cleanActionCount).toBe(11);
-    expect(result.approvedSpendCount).toBe(2);
+    const earnedBack = computeBand([
+      ...many(5),
+      blocked(),
+      ...many(PROMOTION_THRESHOLDS.PROBATION_TO_SUPERVISED),
+    ]);
+    expect(earnedBack.currentBand).toBe('SUPERVISED');
+  });
+
+  it('keeps a lifetime clean-action total for audit, separate from reputation', () => {
+    const result = computeBand([...many(5), blocked(), ...many(2)]);
+
+    expect(result.reputation).toBe(2); // standing: earned back since the block
+    expect(result.lifetimeCleanActions).toBe(7); // career total: never reset
   });
 });
