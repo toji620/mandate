@@ -16,7 +16,9 @@
     "db:reset": "docker compose down -v && docker compose up -d && node -e \"setTimeout(()=>process.exit(0),9000)\" && drizzle-kit push --force && tsx scripts/seed.ts",
     "explain:demo": "tsx scripts/explain-demo.ts",
     "mission:live": "tsx scripts/run-live-mission.ts",
-    "export:training": "tsx scripts/export-training-data.ts"
+    "export:training": "tsx scripts/export-training-data.ts",
+    "policies:pdf": "python scripts/docling/make_pdfs.py",
+    "policies:parse": "python scripts/docling/extract.py"
   },
   "dependencies": {
     "@ibm-cloud/watsonx-ai": "^1.7.15",
