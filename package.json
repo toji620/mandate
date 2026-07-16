@@ -14,7 +14,8 @@
     "db:migrate": "drizzle-kit push",
     "db:seed": "tsx scripts/seed.ts",
     "explain:demo": "tsx scripts/explain-demo.ts",
-    "mission:live": "tsx scripts/run-live-mission.ts"
+    "mission:live": "tsx scripts/run-live-mission.ts",
+    "export:training": "tsx scripts/export-training-data.ts"
   },
   "dependencies": {
     "@ibm-cloud/watsonx-ai": "^1.7.15",

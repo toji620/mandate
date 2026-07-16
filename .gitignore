@@ -38,3 +38,6 @@ next-env.d.ts
 
 # vitest
 .vitest
+
+# exported training data (regenerated from the decisions in Postgres)
+/data/training/
