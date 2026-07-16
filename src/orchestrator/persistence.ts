@@ -128,40 +128,9 @@ export async function updateApprovalStatus(
   }
 }
 
-/**
- * Save a trust ledger entry (promotion/demotion event).
- */
-export async function saveTrustLedgerEntry(
-  agentRole: string,
-  event: 'promotion' | 'demotion',
-  fromBand: string,
-  toBand: string,
-  reason: string,
-  missionId?: string,
-  stepNumber?: number
-): Promise<void> {
-  if (!(await checkDbAvailable())) {
-    console.log('[Persistence] DB unavailable, skipping ledger entry');
-    return;
-  }
-
-  try {
-    await db.insert(trustLedger).values({
-      agentRole,
-      event,
-      fromBand,
-      toBand,
-      reason,
-      missionId: missionId || null,
-      stepNumber: stepNumber || null,
-      timestamp: new Date(),
-    });
-    
-    console.log(`[Persistence] Saved ledger entry: agent=${agentRole}, event=${event}, ${fromBand}→${toBand}`);
-  } catch (error) {
-    console.error('[Persistence] Failed to save ledger entry:', error);
-  }
-}
+// Trust-ledger writes now live in src/trust/ledger.ts (appendLedgerEvent), which
+// records clean actions, promotions and demotions keyed by agent version. This
+// file no longer writes to trust_ledger.
 
 /**
  * Get all decisions for a mission.

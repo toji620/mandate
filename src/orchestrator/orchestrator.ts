@@ -6,11 +6,33 @@ import {
   SPEND_COMMITTING_ACTIONS,
   type LedgerEvent,
 } from '@/src/engine/evaluate';
+import { AGENT_ROLES, type AgentRole } from '@/src/agents/agents';
 import { propose } from '@/src/agents/propose';
-import type { AgentRole } from '@/src/agents/agents';
+import { getModelId } from '@/src/granite/client';
+import { agentVersion } from '@/src/trust/version';
+import { appendLedgerEvent, loadLedger } from '@/src/trust/ledger';
 import type { AgentState, ApprovedCommitment, PolicyRule, ProposedAction } from '@/src/types';
 import type { MissionConfig, MissionStatus, MissionStep, PendingApproval } from './types';
-import { saveApproval, saveDecision, saveTrustLedgerEntry, updateApprovalStatus } from './persistence';
+import { saveApproval, saveDecision, updateApprovalStatus } from './persistence';
+
+/**
+ * Seam over the trust ledger, so tests can supply an agent's history without a
+ * database and the orchestrator does not depend on Postgres to run.
+ */
+export interface TrustStore {
+  load(agentRole: string, version: string): Promise<LedgerEvent[]>;
+  append(
+    agentRole: string,
+    version: string,
+    event: LedgerEvent,
+    missionId: string,
+    stepNumber: number,
+    reason: string
+  ): Promise<void>;
+}
+
+/** The one agent whose trust this demo tracks. */
+const TRUST_ROLE = 'Sourcing Agent';
 
 /**
  * Mission orchestrator: a plain TypeScript state machine running
@@ -29,6 +51,13 @@ export class MissionOrchestrator {
 
   /** Resolvers for approvals the execution loop is currently parked on. */
   private approvalWaiters: Map<string, () => void> = new Map();
+
+  /** Production uses Postgres. Tests inject an in-memory store. */
+  private trustStore: TrustStore = { load: loadLedger, append: appendLedgerEvent };
+
+  setTrustStore(store: TrustStore): void {
+    this.trustStore = store;
+  }
 
   async startMission(config: MissionConfig, rules: PolicyRule[]): Promise<string> {
     const missionId = uuidv4();
@@ -120,8 +149,14 @@ export class MissionOrchestrator {
 
     const rules = mission.rules;
 
-    /** Append-only. The band is a function of this and nothing else. */
-    const ledger: LedgerEvent[] = [];
+    // The agent CONFIGURATION this mission runs as. Trust binds to this: a
+    // different model (e.g. a fine-tuned one) has a different version and
+    // re-earns trust from scratch. The prompt is held constant.
+    const version = agentVersion(TRUST_ROLE, getModelId(), AGENT_ROLES.sourcing.prompt);
+
+    // The agent's whole history, not a blank slate. Reputation is a test record
+    // for this configuration and survives across missions. Append-only.
+    const ledger: LedgerEvent[] = await this.trustStore.load(TRUST_ROLE, version);
 
     /** Spends a human has actually signed off. The agent cannot write to this. */
     const priorApprovals: ApprovedCommitment[] = [];
@@ -169,22 +204,21 @@ export class MissionOrchestrator {
         if (decision.verdict === 'BLOCK') {
           const bandAfter = demote(before.currentBand);
 
-          ledger.push({
+          const demotion: LedgerEvent = {
             eventType: 'DEMOTION',
             verdict: 'BLOCK',
             bandBefore: before.currentBand,
             bandAfter,
             createdAt: new Date(),
-          });
-
-          await saveTrustLedgerEntry(
-            agentStateBefore.name,
-            'demotion',
-            before.currentBand,
-            bandAfter,
-            `Blocked action: ${decision.explanation}`,
+          };
+          ledger.push(demotion);
+          await this.trustStore.append(
+            TRUST_ROLE,
+            version,
+            demotion,
             missionId,
-            stepNumber
+            stepNumber,
+            `Blocked action: ${decision.explanation}`
           );
         } else if (decision.verdict === 'REVIEW' || decision.verdict === 'APPROVAL') {
           const approval: PendingApproval = {
@@ -231,10 +265,10 @@ export class MissionOrchestrator {
             amount: proposal.payload.amount as number | undefined,
           });
 
-          ledger.push(this.cleanAction(proposal, decision.verdict, before.currentBand));
+          await this.recordClean(proposal, decision.verdict, before.currentBand, ledger, version, missionId, stepNumber);
           this.executeAction(proposal, mission.context);
         } else {
-          ledger.push(this.cleanAction(proposal, decision.verdict, before.currentBand));
+          await this.recordClean(proposal, decision.verdict, before.currentBand, ledger, version, missionId, stepNumber);
           this.executeAction(proposal, mission.context);
         }
 
@@ -250,14 +284,21 @@ export class MissionOrchestrator {
           after.currentBand !== before.currentBand &&
           decision.verdict !== 'BLOCK' // demotion already logged above
         ) {
-          await saveTrustLedgerEntry(
-            agentStateBefore.name,
-            'promotion',
-            before.currentBand,
-            after.currentBand,
-            `Reputation reached ${after.reputation}`,
+          // A promotion is a marker event for the audit trail. It does not feed
+          // computeBand (which derives the band from clean actions), so it is not
+          // pushed to the in-memory ledger — only persisted for the record.
+          await this.trustStore.append(
+            TRUST_ROLE,
+            version,
+            {
+              eventType: 'PROMOTION',
+              bandBefore: before.currentBand,
+              bandAfter: after.currentBand,
+              createdAt: new Date(),
+            },
             missionId,
-            stepNumber
+            stepNumber,
+            `Reputation reached ${after.reputation}`
           );
         }
 
@@ -288,12 +329,17 @@ export class MissionOrchestrator {
     mission.steps.push(step);
   }
 
-  private cleanAction(
+  /** Record a clean action both in the live ledger and in the persistent store. */
+  private async recordClean(
     proposal: ProposedAction,
     verdict: 'ALLOW' | 'REVIEW' | 'APPROVAL',
-    band: AgentState['autonomyBand']
-  ): LedgerEvent {
-    return {
+    band: AgentState['autonomyBand'],
+    ledger: LedgerEvent[],
+    version: string,
+    missionId: string,
+    stepNumber: number
+  ): Promise<void> {
+    const event: LedgerEvent = {
       eventType: 'CLEAN_ACTION',
       verdict,
       bandBefore: band,
@@ -301,6 +347,15 @@ export class MissionOrchestrator {
       isSpendAction: SPEND_COMMITTING_ACTIONS.includes(proposal.actionType),
       createdAt: new Date(),
     };
+    ledger.push(event);
+    await this.trustStore.append(
+      TRUST_ROLE,
+      version,
+      event,
+      missionId,
+      stepNumber,
+      `Clean action: ${proposal.actionType} (${verdict})`
+    );
   }
 
   /** Sandboxed tools. Only run once the evaluator has cleared the action. */

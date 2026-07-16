@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, jsonb, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, timestamp, jsonb, pgEnum, boolean } from 'drizzle-orm/pg-core';
 
 // Enums
 export const autonomyBandEnum = pgEnum('autonomy_band', ['PROBATION', 'SUPERVISED', 'TRUSTED']);
@@ -83,7 +83,13 @@ export const decisions = pgTable('decisions', {
 export const trustLedger = pgTable('trust_ledger', {
   id: serial('id').primaryKey(),
   agentRole: text('agent_role').notNull(),
-  event: text('event').notNull(),
+  // The agent CONFIGURATION this evidence is about (role + model + prompt hash).
+  // Reputation earned by one prompt/model does not transfer to another — this is
+  // what makes a fine-tuned model re-earn trust rather than inherit it.
+  agentVersion: text('agent_version').notNull().default('legacy'),
+  event: text('event').notNull(), // clean_action | promotion | demotion
+  verdict: text('verdict'), // the verdict that produced a clean_action
+  isSpendAction: boolean('is_spend_action').notNull().default(false),
   fromBand: text('from_band').notNull(),
   toBand: text('to_band').notNull(),
   reason: text('reason').notNull(),
