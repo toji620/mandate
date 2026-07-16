@@ -1,4 +1,5 @@
 import type { Decision, ProposedAction, PolicyRule } from '@/src/types';
+import { graniteChat, isGraniteConfigured } from '@/src/granite/client';
 
 export type ExplanationMode = 'live' | 'fixture';
 
@@ -50,40 +51,15 @@ async function explainLive(
   action: ProposedAction,
   rule: PolicyRule | undefined
 ): Promise<string> {
-  const apiKey = process.env.WATSONX_API_KEY;
-  const projectId = process.env.WATSONX_PROJECT_ID;
-  const url = process.env.WATSONX_URL || 'https://us-south.ml.cloud.ibm.com';
-
-  if (!apiKey || !projectId) {
-    throw new Error('WATSONX_API_KEY and WATSONX_PROJECT_ID must be set in .env');
-  }
+  if (!isGraniteConfigured()) return decision.explanation;
 
   try {
-    const { WatsonXAI } = await import('@ibm-cloud/watsonx-ai');
-    const { IamAuthenticator } = await import('ibm-cloud-sdk-core');
-    
-    const watsonxAI = WatsonXAI.newInstance({
-      version: '2024-05-31',
-      serviceUrl: url,
-      authenticator: new IamAuthenticator({ apikey: apiKey }),
-    });
-
-    // Construct prompt that instructs Granite to explain, not override
-    const prompt = buildExplanationPrompt(decision, action, rule);
-
-    const response = await watsonxAI.textChat({
-      messages: [{ role: 'user', content: prompt }],
-      modelId: 'ibm/granite-13b-chat-v2',
-      projectId: projectId,
+    return await graniteChat(buildExplanationPrompt(decision, action, rule), {
       maxTokens: 200,
       temperature: 0.7,
-      topP: 0.9,
     });
-
-    return response.result.choices[0]?.message?.content?.trim() || decision.explanation;
   } catch (error) {
-    console.error('Error calling watsonx.ai:', error);
-    // Fallback to basic explanation on error
+    console.error('Granite explanation failed, falling back to the deterministic one:', error);
     return decision.explanation;
   }
 }

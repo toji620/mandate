@@ -1,5 +1,6 @@
 import type { ProposedAction, AgentState } from '@/src/types';
 import type { MissionState } from './propose';
+import { graniteChat } from '@/src/granite/client';
 
 /**
  * Agent role definitions with Granite prompts
@@ -68,88 +69,35 @@ Current mission context will be provided. Respond with a single action in JSON f
 export type AgentRole = keyof typeof AGENT_ROLES;
 
 /**
- * Live agent implementation using Granite via watsonx.ai SDK
+ * Live agent implementation using Granite via the shared client.
  */
 export async function proposeLive(
   role: AgentRole,
   missionState: MissionState,
   agentState: AgentState
 ): Promise<ProposedAction> {
-  const apiKey = process.env.WATSONX_API_KEY;
-  const projectId = process.env.WATSONX_PROJECT_ID;
-  const url = process.env.WATSONX_URL || 'https://us-south.ml.cloud.ibm.com';
+  const prompt = buildAgentPrompt(AGENT_ROLES[role], missionState);
 
-  if (!apiKey || !projectId) {
-    throw new Error('WATSONX_API_KEY and WATSONX_PROJECT_ID must be set in .env for live mode');
-  }
-
-  const { WatsonXAI } = await import('@ibm-cloud/watsonx-ai');
-  const { IamAuthenticator } = await import('ibm-cloud-sdk-core');
-  
-  const watsonxAI = WatsonXAI.newInstance({
-    version: '2024-05-31',
-    serviceUrl: url,
-    authenticator: new IamAuthenticator({ apikey: apiKey }),
-  });
-
-  const roleConfig = AGENT_ROLES[role];
-  const prompt = buildAgentPrompt(roleConfig, missionState);
-
+  let text: string;
   try {
-    const response = await watsonxAI.textChat({
-      messages: [{ role: 'user', content: prompt }],
-      modelId: 'ibm/granite-13b-chat-v2',
-      projectId: projectId,
-      maxTokens: 500,
-      temperature: 0.7,
-      topP: 0.9,
-    });
-
-    const generatedText = response.result.choices[0]?.message?.content?.trim();
-    if (!generatedText) {
-      throw new Error('No response from Granite');
-    }
-
-    // Parse JSON from response
-    const action = parseActionFromResponse(generatedText);
-    
-    // Validate and return
-    return {
-      agentId: agentState.id,
-      actionType: action.actionType,
-      payload: action.payload,
-      riskClass: action.riskClass,
-    };
+    text = await graniteChat(prompt, { maxTokens: 500, temperature: 0.7 });
   } catch (error) {
-    console.error(`Error in live propose for ${role}:`, error);
-    
-    // Retry once with a simpler prompt
-    try {
-      const retryPrompt = `${prompt}\n\nIMPORTANT: Respond with ONLY valid JSON, no other text.`;
-      const retryResponse = await watsonxAI.textChat({
-        messages: [{ role: 'user', content: retryPrompt }],
-        modelId: 'ibm/granite-13b-chat-v2',
-        projectId: projectId,
-        maxTokens: 300,
-        temperature: 0.5,
-      });
-
-      const retryText = retryResponse.result.choices[0]?.message?.content?.trim();
-      if (!retryText) {
-        throw new Error('No response from Granite on retry');
-      }
-
-      const action = parseActionFromResponse(retryText);
-      return {
-        agentId: agentState.id,
-        actionType: action.actionType,
-        payload: action.payload,
-        riskClass: action.riskClass,
-      };
-    } catch (retryError) {
-      throw new Error(`Failed to get valid proposal from Granite after retry: ${retryError}`);
-    }
+    // One retry with a blunter instruction. Granite sometimes prefaces JSON with prose.
+    console.error(`Granite call failed for ${role}, retrying:`, error);
+    text = await graniteChat(`${prompt}\n\nRespond with ONLY valid JSON. No other text.`, {
+      maxTokens: 300,
+      temperature: 0.5,
+    });
   }
+
+  const action = parseActionFromResponse(text);
+
+  return {
+    agentId: agentState.id,
+    actionType: action.actionType,
+    payload: action.payload,
+    riskClass: action.riskClass,
+  };
 }
 
 /**
