@@ -70,6 +70,11 @@ export const decisions = pgTable('decisions', {
   // rule it came from.
   ruleId: integer('rule_id'),
   explanation: text('explanation'),
+  // Granite's readable gloss, SEPARATE from `explanation` (the evaluator's
+  // deterministic, authoritative reason). An LLM never overwrites the reason a
+  // decision was made. explanation_source records where the gloss came from.
+  graniteExplanation: text('granite_explanation'),
+  explanationSource: text('explanation_source'), // 'granite' | 'fixture'
   sourcePassage: text('source_passage'),
   riskClass: text('risk_class').notNull(),
   agentBandBefore: autonomyBandEnum('agent_band_before').notNull(),

@@ -8,7 +8,8 @@ import {
 } from '@/src/engine/evaluate';
 import { AGENT_ROLES, type AgentRole } from '@/src/agents/agents';
 import { propose } from '@/src/agents/propose';
-import { getModelId } from '@/src/granite/client';
+import { explain } from '@/src/engine/explain';
+import { getModelId, isGraniteConfigured } from '@/src/granite/client';
 import { agentVersion } from '@/src/trust/version';
 import { appendLedgerEvent, loadLedger } from '@/src/trust/ledger';
 import type { AgentState, ApprovedCommitment, PolicyRule, ProposedAction } from '@/src/types';
@@ -302,6 +303,25 @@ export class MissionOrchestrator {
           );
         }
 
+        // Granite explains the verdict — it does not decide it (the verdict is
+        // already fixed). Live text needs a key; otherwise a fixture gloss is
+        // used and labelled as such, never passed off as genuine Granite output.
+        const useLive = mission.mode === 'live' && isGraniteConfigured();
+        let graniteExplanation: string | undefined;
+        let explanationSource: 'granite' | 'fixture' | undefined;
+        try {
+          const firedRule = rules.find((r) => r.id === decision.ruleId);
+          graniteExplanation = await explain(
+            decision,
+            proposal,
+            firedRule,
+            useLive ? 'live' : 'fixture'
+          );
+          explanationSource = useLive ? 'granite' : 'fixture';
+        } catch (error) {
+          console.error('Explanation failed (non-fatal):', error);
+        }
+
         const step: MissionStep = {
           stepNumber,
           agentRole,
@@ -309,6 +329,8 @@ export class MissionOrchestrator {
           decision,
           agentStateBefore,
           agentStateAfter,
+          graniteExplanation,
+          explanationSource,
           timestamp: new Date(),
         };
 

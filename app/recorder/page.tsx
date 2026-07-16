@@ -12,6 +12,8 @@ interface DecisionRecord {
   verdict: 'ALLOW' | 'REVIEW' | 'APPROVAL' | 'BLOCK';
   ruleId: number | null;
   explanation: string;
+  graniteExplanation: string | null;
+  explanationSource: string | null;
   sourcePassage: string | null;
   riskClass: string;
   agentBandBefore: string;
@@ -410,7 +412,10 @@ function DecisionReplay({
 
           <div style={{ marginBottom: '1.5rem' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.6rem' }}>
-              Why
+              Why{' '}
+              <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 'normal' }}>
+                deterministic — the authoritative reason
+              </span>
             </h3>
             <div
               style={{
@@ -425,6 +430,28 @@ function DecisionReplay({
               {decision.explanation}
             </div>
           </div>
+
+          {decision.graniteExplanation &&
+            decision.graniteExplanation !== decision.explanation && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.6rem' }}>
+                  Explanation{' '}
+                  <ExplanationSourceChip source={decision.explanationSource} />
+                </h3>
+                <div
+                  style={{
+                    padding: '1rem',
+                    backgroundColor: '#f5f3ff',
+                    borderLeft: '4px solid #8b5cf6',
+                    borderRadius: '4px',
+                    color: '#5b21b6',
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {decision.graniteExplanation}
+                </div>
+              </div>
+            )}
 
           {decision.sourcePassage && (
             <div style={{ marginBottom: '1.5rem' }}>
@@ -476,6 +503,30 @@ function DecisionReplay({
         </div>
       </div>
     </div>
+  );
+}
+
+/** Labels where the explanation came from — Granite (live) or a canned fixture. */
+function ExplanationSourceChip({ source }: { source: string | null }) {
+  const isGranite = source === 'granite';
+  return (
+    <span
+      style={{
+        fontSize: '0.7rem',
+        fontWeight: 'bold',
+        padding: '0.15rem 0.55rem',
+        borderRadius: '10px',
+        backgroundColor: isGranite ? '#ede9fe' : '#f3f4f6',
+        color: isGranite ? '#5b21b6' : '#6b7280',
+      }}
+      title={
+        isGranite
+          ? 'Generated live by IBM Granite via watsonx.ai'
+          : 'Canned fixture explanation — no watsonx key configured, so this is not live Granite output'
+      }
+    >
+      {isGranite ? 'IBM Granite' : 'fixture (no key)'}
+    </span>
   );
 }
 

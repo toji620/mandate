@@ -19,6 +19,8 @@ export interface DecisionRecord {
   verdict: string;
   ruleId: number | null;
   explanation: string;
+  graniteExplanation: string | null;
+  explanationSource: string | null;
   sourcePassage: string | null;
   riskClass: string;
   agentBandBefore: string;
@@ -42,6 +44,8 @@ export async function GET() {
       verdict: d.verdict,
       ruleId: d.ruleId,
       explanation: d.explanation ?? '',
+      graniteExplanation: d.graniteExplanation,
+      explanationSource: d.explanationSource,
       sourcePassage: d.sourcePassage,
       riskClass: d.riskClass,
       agentBandBefore: d.agentBandBefore,
@@ -68,6 +72,8 @@ export async function GET() {
         verdict: step.decision.verdict,
         ruleId: step.decision.ruleId ?? null,
         explanation: step.decision.explanation,
+        graniteExplanation: step.graniteExplanation ?? null,
+        explanationSource: step.explanationSource ?? null,
         sourcePassage: step.decision.sourcePassage ?? null,
         riskClass: step.proposal.riskClass,
         agentBandBefore: step.agentStateBefore.autonomyBand,

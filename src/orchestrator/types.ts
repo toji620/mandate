@@ -13,6 +13,10 @@ export interface MissionStep {
   decision: Decision;
   agentStateBefore: AgentState;
   agentStateAfter: AgentState;
+  /** Granite's plain-English gloss. Never the authoritative reason. */
+  graniteExplanation?: string;
+  /** Where the gloss came from, so the UI never passes off a fixture as Granite. */
+  explanationSource?: 'granite' | 'fixture';
   timestamp: Date;
 }
 
