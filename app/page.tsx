@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import AuthorityField from './components/AuthorityField';
 
 type LoopEntry =
   | {
@@ -153,7 +154,7 @@ export default function Home() {
   return (
     <main>
       <section className="hero">
-        <div className="hero-backdrop" aria-hidden />
+        <AuthorityField />
         <p className="hero-eyebrow rise">Earned autonomy for AI co-workers</p>
         <h1 className="hero-title rise rise-2">
           A mandate, <em>not a blank cheque</em>

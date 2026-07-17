@@ -1,7 +1,8 @@
 'use client';
 
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import type { MissionStatus, MissionStep } from '@/src/orchestrator/types';
+import TypedText from '../components/TypedText';
 
 const BAND_ORDER = ['PROBATION', 'SUPERVISED', 'TRUSTED'];
 
@@ -15,6 +16,9 @@ export default function MissionControl() {
   const [selectedMission, setSelectedMission] = useState<string | null>(null);
   const [mode, setMode] = useState<'live' | 'replay'>('replay');
   const [isStarting, setIsStarting] = useState(false);
+  // Steps present on first load render statically; steps that arrive while
+  // watching get the typed-out explanation and verdict stamp.
+  const seenSteps = useRef<Set<string> | null>(null);
 
   // Poll for mission updates
   useEffect(() => {
@@ -22,7 +26,13 @@ export default function MissionControl() {
       try {
         const response = await fetch('/api/missions');
         const data = await response.json();
-        setMissions(data.missions || []);
+        const next: MissionStatus[] = data.missions || [];
+        if (seenSteps.current === null) {
+          seenSteps.current = new Set(
+            next.flatMap((m) => m.steps.map((st) => `${m.id}:${st.stepNumber}`))
+          );
+        }
+        setMissions(next);
       } catch (error) {
         console.error('Error fetching missions:', error);
       }
@@ -121,9 +131,12 @@ export default function MissionControl() {
               const after = step.agentStateAfter.autonomyBand;
               const bandChanged = before !== after;
               const promoted = BAND_ORDER.indexOf(after) > BAND_ORDER.indexOf(before);
+              const stepKey = `${currentMission.id}:${step.stepNumber}`;
+              const isNew = seenSteps.current !== null && !seenSteps.current.has(stepKey);
+              if (isNew) seenSteps.current!.add(stepKey);
               return (
                 <Fragment key={step.stepNumber}>
-                  <StepCard step={step} />
+                  <StepCard step={step} isNew={isNew} />
                   {bandChanged && (
                     <div className={promoted ? 'ledger-event' : 'ledger-event demotion'}>
                       {step.agentRole.toUpperCase()} {promoted ? 'PROMOTED' : 'DEMOTED'} · {before} → {after}
@@ -153,7 +166,7 @@ export default function MissionControl() {
   );
 }
 
-function StepCard({ step }: { step: MissionStep }) {
+function StepCard({ step, isNew }: { step: MissionStep; isNew: boolean }) {
   const verdict = step.decision.verdict;
   const band = step.agentStateAfter.autonomyBand;
 
@@ -167,7 +180,9 @@ function StepCard({ step }: { step: MissionStep }) {
           <small>Step {step.stepNumber} · {step.agentRole}</small>
         </div>
         <div style={{ fontWeight: 500 }}>{sentenceCase(step.proposal.actionType)}</div>
-        <div className="muted">{step.decision.explanation}</div>
+        <div className="muted">
+          <TypedText text={step.decision.explanation} active={isNew} />
+        </div>
         {step.decision.sourcePassage && (
           <div className="citation" style={{ marginTop: '0.5rem' }}>
             {step.decision.sourcePassage}
@@ -181,7 +196,9 @@ function StepCard({ step }: { step: MissionStep }) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
         <span className={`band band-${band.toLowerCase()}`}>{band}</span>
-        <span className={`chip chip-${verdict.toLowerCase()}`}>{verdict}</span>
+        <span className={`chip chip-${verdict.toLowerCase()}${isNew ? ' stamp-in' : ''}`}>
+          {verdict}
+        </span>
       </div>
     </div>
   );

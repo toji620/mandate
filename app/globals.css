@@ -420,20 +420,94 @@ input[type="radio"] {
   overflow: hidden;
 }
 
-.hero-backdrop {
+.hero-field {
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(to bottom, rgba(250, 249, 247, 0) 55%, var(--paper) 96%),
-    radial-gradient(ellipse 46% 42% at 50% 32%, var(--paper) 35%, rgba(250, 249, 247, 0) 100%),
-    url('/hero-backdrop.png');
-  background-size: cover, cover, cover;
-  background-position: center;
-  opacity: 0.8;
+  overflow: hidden;
   pointer-events: none;
 }
 
-.hero > :not(.hero-backdrop) { position: relative; }
+.hero-stage {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1440px;
+  height: 800px;
+  margin-left: -720px;
+}
+
+.hero-stage svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.hero-stage .lane {
+  stroke: var(--authority);
+  stroke-width: 1;
+  opacity: 0.07;
+}
+
+.hero-stage .gate path {
+  stroke: var(--authority);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0.14;
+}
+
+.hero-stage .gate-far path {
+  stroke-width: 1.5;
+  opacity: 0.08;
+}
+
+.field-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--authority);
+  opacity: 0;
+  offset-rotate: 0deg;
+}
+
+@keyframes travel {
+  0%   { offset-distance: 0%;   opacity: 0; }
+  6%   { opacity: 0.4; }
+  88%  { opacity: 0.4; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+
+.dot-1 { offset-path: path('M -60,80 C 300,120 520,200 718,248 S 1250,420 1500,480'); animation: travel 11s linear infinite; }
+.dot-2 { offset-path: path('M -60,420 C 260,380 500,300 718,250 S 1200,160 1500,120'); animation: travel 13s linear 3s infinite; }
+.dot-3 { offset-path: path('M -60,650 C 300,600 520,380 720,252 S 1250,520 1500,640'); animation: travel 15s linear 6s infinite; }
+.dot-4 { offset-path: path('M 1500,60 C 1100,120 900,200 722,246 S 300,420 -60,520'); animation: travel 12s linear 8s infinite; }
+
+@keyframes reject {
+  0%   { offset-distance: 0%;  opacity: 0; background: var(--authority); }
+  8%   { opacity: 0.4; }
+  86%  { offset-distance: 97%; opacity: 0.5; background: var(--authority); transform: none; }
+  90%  { offset-distance: 100%; background: var(--block); opacity: 0.7; transform: scale(1.6); }
+  96%  { offset-distance: 94%; background: var(--block); opacity: 0; transform: scale(1); }
+  100% { offset-distance: 94%; opacity: 0; }
+}
+
+.dot-reject {
+  offset-path: path('M -60,260 C 300,236 520,244 716,248');
+  animation: reject 9s linear 4s infinite;
+}
+
+.hero-wash {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 46% 44% at 50% 32%, var(--paper) 28%, rgba(250, 249, 247, 0) 100%),
+    linear-gradient(to bottom, rgba(250, 249, 247, 0) 60%, var(--paper) 97%);
+}
+
+.hero > :not(.hero-field) { position: relative; }
 
 .hero-eyebrow {
   font-family: var(--font-plex-mono), ui-monospace, monospace;
@@ -588,6 +662,32 @@ input[type="radio"] {
   to   { transform: scaleX(1); }
 }
 
+/* Verdict stamp: decisions land with weight. BLOCK lands hardest. */
+@keyframes stamp {
+  0%   { opacity: 0; transform: scale(1.65); }
+  62%  { opacity: 1; transform: scale(0.94); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes stamp-block {
+  0%   { opacity: 0; transform: scale(1.9) rotate(-5deg); }
+  58%  { opacity: 1; transform: scale(0.92) rotate(1.2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+.stamp-in { animation: stamp 380ms cubic-bezier(0.2, 0.8, 0.25, 1) both; }
+.stamp-in.chip-block { animation: stamp-block 480ms cubic-bezier(0.2, 0.8, 0.25, 1) both; }
+
+.typed-caret {
+  display: inline-block;
+  width: 6px;
+  height: 0.9em;
+  margin-left: 2px;
+  background: var(--authority);
+  vertical-align: text-bottom;
+  animation: pulse 0.8s steps(2, start) infinite;
+}
+
 .loop-row:last-child { border-bottom: none; }
 
 .loop-step {
@@ -604,9 +704,11 @@ input[type="radio"] {
   .rise, .loop-row, .loop-caret,
   .hero .ledger-event,
   .hero .ledger-event::before,
-  .hero .ledger-event::after { animation: none; }
+  .hero .ledger-event::after,
+  .field-dot, .stamp-in, .typed-caret { animation: none; }
   .loop-live::before { animation: none; }
   .loop-chips { transition: none; }
+  .stamp-in { opacity: 1; }
 }
 
 /* Screen directory cards */
