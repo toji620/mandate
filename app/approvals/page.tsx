@@ -52,24 +52,28 @@ export default function ApprovalInbox() {
   };
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '2rem' }}>Approval Inbox</h1>
+    <main className="page">
+      <p className="page-eyebrow">Human authority</p>
+      <h1 className="page-title">Approval Inbox</h1>
+      <p className="page-sub">
+        Proposals the evaluator would not clear on its own. Each one waits here
+        until a human approves or rejects it.
+      </p>
 
       {approvals.length === 0 && (
-        <div style={{
-          textAlign: 'center',
-          padding: '3rem',
-          backgroundColor: '#f9f9f9',
-          borderRadius: '8px',
-          color: '#666',
-        }}>
-          <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>✅ No pending approvals</p>
-          <p style={{ fontSize: '0.875rem' }}>All actions are either approved or within agent autonomy limits.</p>
+        <div className="card">
+          <div className="empty-state">
+            <p className="empty-title">Nothing waiting on you</p>
+            <p>Approvals appear here when an agent&apos;s proposal needs human sign-off.</p>
+          </div>
         </div>
       )}
 
       {approvals.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <>
+          <p className="section-label">
+            Pending · {approvals.length}
+          </p>
           {approvals.map((approval) => (
             <ApprovalCard
               key={approval.id}
@@ -79,9 +83,55 @@ export default function ApprovalInbox() {
               isProcessing={processing === approval.id}
             />
           ))}
-        </div>
+        </>
       )}
-    </div>
+    </main>
+  );
+}
+
+/** "ISSUE_PURCHASE_ORDER" -> "Issue purchase order" */
+function toSentenceCase(actionType: string): string {
+  const words = actionType.replace(/_/g, ' ').trim().toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function formatAmount(value: number, currency?: string): string {
+  return `${currency || 'GBP'} ${value.toLocaleString('en-GB')}`;
+}
+
+/**
+ * Render the payload as a compact line of facts rather than a JSON dump.
+ * Amounts get the mono .amount treatment; the currency key is folded into
+ * the amount instead of shown on its own.
+ */
+function PayloadFacts({ payload }: { payload: Record<string, unknown> }) {
+  const currency = typeof payload.currency === 'string' ? payload.currency : undefined;
+  const entries = Object.entries(payload).filter(
+    ([key, value]) =>
+      key !== 'currency' &&
+      (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
+  );
+
+  if (entries.length === 0) return null;
+
+  return (
+    <p className="mono muted">
+      {entries.map(([key, value], index) => {
+        const isAmount =
+          typeof value === 'number' && /amount|price|cost|total|spend/i.test(key);
+        return (
+          <span key={key}>
+            {index > 0 && <span className="faint">{' · '}</span>}
+            <span className="faint">{key} </span>
+            {isAmount ? (
+              <span className="amount">{formatAmount(value as number, currency)}</span>
+            ) : (
+              String(value)
+            )}
+          </span>
+        );
+      })}
+    </p>
   );
 }
 
@@ -96,145 +146,45 @@ function ApprovalCard({
   onReject: () => void;
   isProcessing: boolean;
 }) {
-  const verdictColors = {
-    REVIEW: { bg: '#fef3c7', border: '#f59e0b', text: '#92400e' },
-    APPROVAL: { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af' },
-  };
-
   const verdict = approval.decision.verdict as 'REVIEW' | 'APPROVAL';
-  const colors = verdictColors[verdict];
+  const chipClass = verdict === 'APPROVAL' ? 'chip chip-approval' : 'chip chip-review';
 
   return (
-    <div style={{
-      border: `2px solid ${colors.border}`,
-      borderRadius: '8px',
-      padding: '1.5rem',
-      backgroundColor: 'white',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-            <span style={{
-              padding: '0.25rem 0.75rem',
-              borderRadius: '12px',
-              fontSize: '0.875rem',
-              fontWeight: 'bold',
-              backgroundColor: colors.bg,
-              color: colors.text,
-              border: `1px solid ${colors.border}`,
-            }}>
-              {verdict}
-            </span>
-            <span style={{ fontSize: '0.875rem', color: '#666' }}>
-              Step {approval.stepNumber} • {approval.agentName}
-            </span>
-          </div>
-          <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-            {approval.proposal.actionType.replace(/_/g, ' ').toUpperCase()}
-          </h3>
-        </div>
-      </div>
+    <>
+      <div className="card card-pad">
+        <p className="mono faint">
+          <span className={chipClass}>{verdict}</span>{' '}
+          {approval.agentName} · step {approval.stepNumber}
+        </p>
 
-      {/* Proposal Details */}
-      <div style={{
-        padding: '1rem',
-        backgroundColor: '#f9f9f9',
-        borderRadius: '4px',
-        marginBottom: '1rem',
-      }}>
-        <div style={{ fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#444' }}>
-          Proposed Action Details:
-        </div>
-        <pre style={{
-          fontSize: '0.75rem',
-          color: '#666',
-          margin: 0,
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-        }}>
-          {JSON.stringify(approval.proposal.payload, null, 2)}
-        </pre>
-      </div>
+        <h3>{toSentenceCase(approval.proposal.actionType)}</h3>
 
-      {/* Decision Explanation */}
-      <div style={{
-        fontSize: '0.875rem',
-        color: '#444',
-        marginBottom: '1rem',
-        padding: '0.75rem',
-        backgroundColor: '#f0f0f0',
-        borderRadius: '4px',
-      }}>
-        <strong>Why this requires approval:</strong>
-        <div style={{ marginTop: '0.5rem' }}>
-          {approval.decision.explanation}
-        </div>
-      </div>
+        <PayloadFacts payload={approval.proposal.payload} />
 
-      {/* Policy Citation */}
-      {approval.decision.sourcePassage && (
-        <div style={{
-          fontSize: '0.75rem',
-          color: '#666',
-          fontStyle: 'italic',
-          padding: '0.75rem',
-          backgroundColor: '#fffbeb',
-          borderLeft: '3px solid #f59e0b',
-          marginBottom: '1rem',
-        }}>
-          <strong>📋 Policy Citation:</strong>
-          <div style={{ marginTop: '0.25rem' }}>
+        <p className="muted">{approval.decision.explanation}</p>
+
+        {approval.decision.sourcePassage && (
+          <blockquote className="citation">
             {approval.decision.sourcePassage}
-          </div>
-        </div>
-      )}
+            {approval.decision.ruleId !== undefined && (
+              <span className="citation-ref">Rule {approval.decision.ruleId}</span>
+            )}
+          </blockquote>
+        )}
 
-      {/* Action Buttons */}
-      <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-        <button
-          onClick={onReject}
-          disabled={isProcessing}
-          style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: isProcessing ? '#ccc' : 'white',
-            color: isProcessing ? '#666' : '#ef4444',
-            border: `2px solid ${isProcessing ? '#ccc' : '#ef4444'}`,
-            borderRadius: '4px',
-            cursor: isProcessing ? 'not-allowed' : 'pointer',
-            fontWeight: 'bold',
-            fontSize: '0.875rem',
-          }}
-        >
-          {isProcessing ? 'Processing...' : '✕ Reject'}
-        </button>
-        <button
-          onClick={onApprove}
-          disabled={isProcessing}
-          style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: isProcessing ? '#ccc' : '#10b981',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: isProcessing ? 'not-allowed' : 'pointer',
-            fontWeight: 'bold',
-            fontSize: '0.875rem',
-          }}
-        >
-          {isProcessing ? 'Processing...' : '✓ Approve'}
-        </button>
+        <p>
+          <button className="btn btn-approve" onClick={onApprove} disabled={isProcessing}>
+            Approve
+          </button>{' '}
+          <button className="btn btn-reject" onClick={onReject} disabled={isProcessing}>
+            Reject
+          </button>
+        </p>
       </div>
 
-      {/* Timestamp */}
-      <div style={{
-        marginTop: '1rem',
-        paddingTop: '1rem',
-        borderTop: '1px solid #e5e5e5',
-        fontSize: '0.75rem',
-        color: '#999',
-      }}>
-        Requested: {new Date(approval.createdAt).toLocaleString()}
-      </div>
-    </div>
+      <p className="mono faint">
+        requested {new Date(approval.createdAt).toLocaleString('en-GB')}
+      </p>
+    </>
   );
 }

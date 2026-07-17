@@ -1,0 +1,412 @@
+/*
+ * MANDATE design system.
+ *
+ * Register: audit-grade calm. An authority console, not a marketing page.
+ * Type: IBM Plex Sans for prose, IBM Plex Mono for anything a compliance
+ * officer would quote back: timestamps, amounts, rule ids, verdicts, bands.
+ * Color: warm paper surface, near-ink text, IBM purple-70 as the single brand
+ * accent (authority), verdict colors reserved exclusively for verdicts.
+ * Trust bands earn saturation: PROBATION is gray, SUPERVISED tinted, TRUSTED
+ * fully violet — trust literally colors in as it is earned.
+ */
+
+:root {
+  --paper: #faf9f7;
+  --surface: #ffffff;
+  --ink: #1c1826;
+  --ink-soft: #5f5a6b;
+  --ink-faint: #8f8a9b;
+  --line: #e7e4ee;
+  --line-strong: #d4d0de;
+
+  --authority: #6929c4;
+  --authority-deep: #491d8b;
+  --authority-tint: #f4effd;
+  --authority-line: #d4bbff;
+
+  --allow: #146c43;
+  --allow-bg: #e6f4ec;
+  --review: #8a6100;
+  --review-bg: #fdf3d5;
+  --approval: #a1500e;
+  --approval-bg: #fcecdd;
+  --block: #b6212b;
+  --block-bg: #fbe8e9;
+
+  --radius: 6px;
+  --shadow-card: 0 1px 2px rgba(28, 24, 38, 0.05);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-plex-sans), "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 14.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono {
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+}
+
+/* ---------- Page scaffold ---------- */
+
+.page {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 2.5rem 2rem 5rem;
+}
+
+.page-eyebrow {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--authority);
+  margin: 0 0 0.4rem;
+}
+
+.page-title {
+  font-size: 1.9rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.35rem;
+}
+
+.page-sub {
+  color: var(--ink-soft);
+  max-width: 64ch;
+  margin: 0 0 2.25rem;
+}
+
+/* ---------- Cards, panels ---------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+.card-pad {
+  padding: 1.25rem 1.5rem;
+}
+
+.section-label {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 2.25rem 0 0.75rem;
+}
+
+/* ---------- Verdict chips: the only saturated color in the system ---------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 0.18rem 0.55rem;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.chip-allow    { color: var(--allow);    background: var(--allow-bg);    border-color: color-mix(in srgb, var(--allow) 25%, transparent); }
+.chip-review   { color: var(--review);   background: var(--review-bg);   border-color: color-mix(in srgb, var(--review) 25%, transparent); }
+.chip-approval { color: var(--approval); background: var(--approval-bg); border-color: color-mix(in srgb, var(--approval) 25%, transparent); }
+.chip-block    { color: var(--block);    background: var(--block-bg);    border-color: color-mix(in srgb, var(--block) 25%, transparent); }
+
+/* Trust bands: saturation is earned */
+.band {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 0.16rem 0.55rem;
+  border-radius: 999px;
+}
+
+.band::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.band-probation  { color: var(--ink-soft); background: #eeecf2; }
+.band-supervised { color: var(--authority-deep); background: var(--authority-tint); }
+.band-trusted    { color: #ffffff; background: var(--authority); }
+
+/* Full-width ledger event for promotions/demotions — the signature element */
+.ledger-event {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--authority-deep);
+  margin: 0.35rem 0;
+}
+
+.ledger-event::before,
+.ledger-event::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--authority-line);
+}
+
+.ledger-event.demotion {
+  color: var(--block);
+}
+
+.ledger-event.demotion::before,
+.ledger-event.demotion::after {
+  background: color-mix(in srgb, var(--block) 30%, transparent);
+}
+
+/* ---------- Tables (Flight Recorder, Policy Library) ---------- */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.table th {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: left;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.table td {
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.table tbody tr {
+  transition: background 120ms ease;
+}
+
+.table tbody tr:hover {
+  background: var(--authority-tint);
+}
+
+.table tbody tr.clickable {
+  cursor: pointer;
+}
+
+/* ---------- Citations: policy text is evidence, style it as a quotation ---------- */
+
+.citation {
+  font-size: 0.84rem;
+  color: var(--ink-soft);
+  border-left: 2px solid var(--authority-line);
+  padding: 0.15rem 0 0.15rem 0.75rem;
+  font-style: normal;
+}
+
+.citation .citation-ref {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: var(--authority-deep);
+  display: block;
+  margin-top: 0.25rem;
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  padding: 0.5rem 1.05rem;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.btn-primary {
+  background: var(--authority);
+  color: #ffffff;
+}
+
+.btn-primary:hover { background: var(--authority-deep); }
+
+.btn-approve {
+  background: var(--allow);
+  color: #ffffff;
+}
+
+.btn-approve:hover { background: #0e5233; }
+
+.btn-reject {
+  background: transparent;
+  color: var(--block);
+  border-color: color-mix(in srgb, var(--block) 40%, transparent);
+}
+
+.btn-reject:hover { background: var(--block-bg); }
+
+.btn-quiet {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.btn-quiet:hover { border-color: var(--ink-faint); }
+
+.btn:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--authority);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- Nav ---------- */
+
+.nav {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.nav-inner {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  gap: 2.5rem;
+  height: 3.5rem;
+}
+
+.nav-wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.nav-glyph {
+  width: 14px;
+  height: 14px;
+  background: var(--authority);
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.nav-tabs {
+  display: flex;
+  gap: 0.25rem;
+  height: 100%;
+}
+
+.nav-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.9rem;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 120ms ease;
+}
+
+.nav-tab:hover { color: var(--ink); }
+
+.nav-tab.active {
+  color: var(--ink);
+  border-bottom-color: var(--authority);
+}
+
+/* ---------- Forms ---------- */
+
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.radio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+input[type="radio"] {
+  accent-color: var(--authority);
+}
+
+/* ---------- Utility ---------- */
+
+.muted { color: var(--ink-soft); }
+.faint { color: var(--ink-faint); }
+.amount { font-family: var(--font-plex-mono), ui-monospace, monospace; font-weight: 500; }
+
+.empty-state {
+  text-align: center;
+  padding: 3.5rem 2rem;
+  color: var(--ink-soft);
+}
+
+.empty-state .empty-title {
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.3rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+@media (max-width: 720px) {
+  .page { padding: 1.5rem 1rem 3rem; }
+  .nav-inner { padding: 0 1rem; gap: 1rem; overflow-x: auto; }
+}

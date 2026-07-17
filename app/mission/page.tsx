@@ -1,7 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import type { MissionStatus, MissionStep } from '@/src/orchestrator/types';
+
+const BAND_ORDER = ['PROBATION', 'SUPERVISED', 'TRUSTED'];
+
+function sentenceCase(actionType: string): string {
+  const words = actionType.replace(/_/g, ' ').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 export default function MissionControl() {
   const [missions, setMissions] = useState<MissionStatus[]>([]);
@@ -56,257 +63,126 @@ export default function MissionControl() {
     : missions[missions.length - 1];
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '2rem' }}>Mission Control</h1>
+    <main className="page">
+      <p className="page-eyebrow">Live authority feed</p>
+      <h1 className="page-title">Mission Control</h1>
+      <p className="page-sub">
+        Agent proposals evaluated against policy in real time, with trust earned or revoked per decision.
+      </p>
 
-      {/* Start Mission Controls */}
-      <div style={{ 
-        marginBottom: '2rem', 
-        padding: '1.5rem', 
-        border: '1px solid #ddd', 
-        borderRadius: '8px',
-        backgroundColor: '#f9f9f9'
-      }}>
-        <h2 style={{ marginBottom: '1rem', fontSize: '1.2rem' }}>Start New Mission</h2>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      <div className="card card-pad">
+        <div className="radio-row">
+          <label className="radio-label">
             <input
               type="radio"
               value="replay"
               checked={mode === 'replay'}
               onChange={(e) => setMode(e.target.value as 'replay')}
             />
-            Replay Mode (Fixtures)
+            Replay
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label className="radio-label">
             <input
               type="radio"
               value="live"
               checked={mode === 'live'}
               onChange={(e) => setMode(e.target.value as 'live')}
             />
-            Live Mode (Granite)
+            Live
           </label>
-          <button
-            onClick={startMission}
-            disabled={isStarting}
-            style={{
-              padding: '0.5rem 1.5rem',
-              backgroundColor: isStarting ? '#ccc' : '#0070f3',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: isStarting ? 'not-allowed' : 'pointer',
-              fontWeight: 'bold',
-            }}
-          >
-            {isStarting ? 'Starting...' : 'Start Mission'}
+          <button className="btn btn-primary" onClick={startMission} disabled={isStarting}>
+            {isStarting ? 'Starting mission' : 'Start mission'}
           </button>
         </div>
       </div>
 
-      {/* Mission Status */}
       {currentMission && (
-        <div style={{ marginBottom: '2rem' }}>
-          <div style={{ 
-            padding: '1rem', 
-            backgroundColor: '#f0f0f0', 
-            borderRadius: '4px',
-            marginBottom: '1rem'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <strong>Mission:</strong> {currentMission.goal}
-              </div>
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                <span style={{
-                  padding: '0.25rem 0.75rem',
-                  borderRadius: '12px',
-                  fontSize: '0.875rem',
-                  fontWeight: 'bold',
-                  backgroundColor: currentMission.mode === 'live' ? '#10b981' : '#3b82f6',
-                  color: 'white',
-                }}>
-                  {currentMission.mode.toUpperCase()}
-                </span>
-                <StatusChip status={currentMission.status} />
-              </div>
-            </div>
+        <>
+          <h2 className="section-label">Mission</h2>
+          <div
+            className="card card-pad"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}
+          >
+            <span className="mono">{currentMission.goal}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+              <span className="chip faint">{currentMission.mode.toUpperCase()}</span>
+              <span className="chip muted">{currentMission.status.toUpperCase()}</span>
+            </span>
           </div>
-        </div>
+        </>
       )}
 
-      {/* Decision Feed */}
       {currentMission && currentMission.steps.length > 0 && (
-        <div>
-          <h2 style={{ marginBottom: '1rem', fontSize: '1.2rem' }}>Decision Feed</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {currentMission.steps.map((step) => (
-              <StepCard key={step.stepNumber} step={step} />
-            ))}
+        <>
+          <h2 className="section-label">Decision feed</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            {currentMission.steps.map((step) => {
+              const before = step.agentStateBefore.autonomyBand;
+              const after = step.agentStateAfter.autonomyBand;
+              const bandChanged = before !== after;
+              const promoted = BAND_ORDER.indexOf(after) > BAND_ORDER.indexOf(before);
+              return (
+                <Fragment key={step.stepNumber}>
+                  <StepCard step={step} />
+                  {bandChanged && (
+                    <div className={promoted ? 'ledger-event' : 'ledger-event demotion'}>
+                      {step.agentRole.toUpperCase()} {promoted ? 'PROMOTED' : 'DEMOTED'} · {before} → {after}
+                    </div>
+                  )}
+                </Fragment>
+              );
+            })}
           </div>
-        </div>
+        </>
       )}
 
       {currentMission && currentMission.steps.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '3rem', color: '#666' }}>
-          <p>Mission started. Waiting for first decision...</p>
+        <div className="empty-state">
+          <p className="empty-title">Waiting for first decision</p>
+          <p>The mission is running; proposals appear here as they are evaluated.</p>
         </div>
       )}
 
       {!currentMission && (
-        <div style={{ textAlign: 'center', padding: '3rem', color: '#666' }}>
-          <p>No active mission. Start a new mission above.</p>
+        <div className="empty-state">
+          <p className="empty-title">No mission running</p>
+          <p>Start a mission to see agent proposals evaluated in real time.</p>
         </div>
       )}
-    </div>
-  );
-}
-
-function StatusChip({ status }: { status: string }) {
-  const colors = {
-    running: { bg: '#10b981', text: 'white' },
-    paused: { bg: '#f59e0b', text: 'white' },
-    completed: { bg: '#6366f1', text: 'white' },
-    failed: { bg: '#ef4444', text: 'white' },
-  };
-
-  const color = colors[status as keyof typeof colors] || colors.running;
-
-  return (
-    <span style={{
-      padding: '0.25rem 0.75rem',
-      borderRadius: '12px',
-      fontSize: '0.875rem',
-      fontWeight: 'bold',
-      backgroundColor: color.bg,
-      color: color.text,
-    }}>
-      {status.toUpperCase()}
-    </span>
+    </main>
   );
 }
 
 function StepCard({ step }: { step: MissionStep }) {
-  const verdictColors = {
-    ALLOW: { bg: '#d1fae5', border: '#10b981', text: '#065f46' },
-    REVIEW: { bg: '#fef3c7', border: '#f59e0b', text: '#92400e' },
-    APPROVAL: { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af' },
-    BLOCK: { bg: '#fee2e2', border: '#ef4444', text: '#991b1b' },
-  };
-
   const verdict = step.decision.verdict;
-  const colors = verdictColors[verdict];
-
-  const bandChanged = step.agentStateBefore.autonomyBand !== step.agentStateAfter.autonomyBand;
+  const band = step.agentStateAfter.autonomyBand;
 
   return (
-    <div style={{
-      border: `2px solid ${colors.border}`,
-      borderRadius: '8px',
-      padding: '1rem',
-      backgroundColor: 'white',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.75rem' }}>
-        <div>
-          <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.25rem' }}>
-            Step {step.stepNumber} • {step.agentRole}
-          </div>
-          <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-            {step.proposal.actionType.replace(/_/g, ' ').toUpperCase()}
-          </div>
+    <div
+      className="card card-pad"
+      style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1.5rem' }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div className="mono faint">
+          <small>Step {step.stepNumber} · {step.agentRole}</small>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <BandChip band={step.agentStateAfter.autonomyBand} />
-          <span style={{
-            padding: '0.25rem 0.75rem',
-            borderRadius: '12px',
-            fontSize: '0.875rem',
-            fontWeight: 'bold',
-            backgroundColor: colors.bg,
-            color: colors.text,
-            border: `1px solid ${colors.border}`,
-          }}>
-            {verdict}
-          </span>
+        <div style={{ fontWeight: 500 }}>{sentenceCase(step.proposal.actionType)}</div>
+        <div className="muted">{step.decision.explanation}</div>
+        {step.decision.sourcePassage && (
+          <div className="citation" style={{ marginTop: '0.5rem' }}>
+            {step.decision.sourcePassage}
+          </div>
+        )}
+        <div style={{ marginTop: '0.5rem' }}>
+          <small>
+            <a href="/recorder" className="mono faint">View in Flight Recorder</a>
+          </small>
         </div>
       </div>
-
-      {bandChanged && (
-        <div style={{
-          padding: '0.5rem',
-          backgroundColor: '#fef3c7',
-          border: '1px solid #f59e0b',
-          borderRadius: '4px',
-          marginBottom: '0.75rem',
-          fontSize: '0.875rem',
-          fontWeight: 'bold',
-          color: '#92400e',
-        }}>
-          🔄 Band Transition: {step.agentStateBefore.autonomyBand} → {step.agentStateAfter.autonomyBand}
-        </div>
-      )}
-
-      <div style={{ fontSize: '0.875rem', color: '#444', marginBottom: '0.5rem' }}>
-        {step.decision.explanation}
-      </div>
-
-      {step.decision.sourcePassage && (
-        <div style={{
-          fontSize: '0.75rem',
-          color: '#666',
-          fontStyle: 'italic',
-          padding: '0.5rem',
-          backgroundColor: '#f9f9f9',
-          borderLeft: '3px solid #ddd',
-          marginTop: '0.5rem',
-        }}>
-          📋 {step.decision.sourcePassage}
-        </div>
-      )}
-
-      <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e5e5' }}>
-        <a
-          href="/recorder"
-          style={{
-            fontSize: '0.75rem',
-            color: '#3b82f6',
-            textDecoration: 'none',
-            fontWeight: 'bold',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.textDecoration = 'underline';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.textDecoration = 'none';
-          }}
-        >
-          📼 View in Flight Recorder →
-        </a>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+        <span className={`band band-${band.toLowerCase()}`}>{band}</span>
+        <span className={`chip chip-${verdict.toLowerCase()}`}>{verdict}</span>
       </div>
     </div>
-  );
-}
-
-function BandChip({ band }: { band: string }) {
-  const colors = {
-    PROBATION: { bg: '#fee2e2', text: '#991b1b' },
-    SUPERVISED: { bg: '#fef3c7', text: '#92400e' },
-    TRUSTED: { bg: '#d1fae5', text: '#065f46' },
-  };
-
-  const color = colors[band as keyof typeof colors] || colors.PROBATION;
-
-  return (
-    <span style={{
-      padding: '0.25rem 0.75rem',
-      borderRadius: '12px',
-      fontSize: '0.75rem',
-      fontWeight: 'bold',
-      backgroundColor: color.bg,
-      color: color.text,
-    }}>
-      {band}
-    </span>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 
 interface PolicyRule {
   id: number;
@@ -42,61 +42,41 @@ export default function PolicyLibrary() {
 
   if (loading) {
     return (
-      <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <h1 style={{ marginBottom: '2rem' }}>Policy Library</h1>
-        <p>Loading policies…</p>
-      </div>
+      <main className="page">
+        <p className="page-eyebrow">Source of truth</p>
+        <h1 className="page-title">Policy Library</h1>
+        <p className="page-sub">Loading policies…</p>
+      </main>
     );
   }
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '1rem' }}>Policy Library</h1>
-      <p style={{ color: '#666', marginBottom: '1rem', fontSize: '0.95rem' }}>
+    <main className="page">
+      <p className="page-eyebrow">Source of truth</p>
+      <h1 className="page-title">Policy Library</h1>
+      <p className="page-sub">
         Policy documents, parsed offline and human-reviewed, become structured rules with a
-        citation attached to every one. These are the rules the evaluator enforces — the same
+        citation attached to every one. These are the rules the evaluator enforces: the same
         objects, not a copy.
       </p>
 
       {error && (
-        <div
-          style={{
-            padding: '1rem',
-            backgroundColor: '#fee2e2',
-            border: '1px solid #ef4444',
-            borderRadius: '6px',
-            color: '#991b1b',
-            marginBottom: '1.5rem',
-          }}
-        >
-          Could not load the policy library: {error}
+        <div className="card card-pad">
+          <p className="muted">Could not load the policy library: {error}</p>
         </div>
       )}
 
       {!error && (
-        <div
-          style={{
-            display: 'flex',
-            gap: '1rem',
-            alignItems: 'center',
-            marginBottom: '2rem',
-            fontSize: '0.8rem',
-            color: '#666',
-          }}
-        >
-          <span>
-            <strong>{policies.length}</strong> documents · <strong>{ruleCount}</strong> rules
-          </span>
+        <p className="mono faint">
+          {policies.length} documents · {ruleCount} rules{source && ' · '}
           <SourceChip source={source} />
-        </div>
+        </p>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-        {policies.map((policy) => (
-          <PolicyCard key={policy.id} policy={policy} />
-        ))}
-      </div>
-    </div>
+      {policies.map((policy) => (
+        <PolicyCard key={policy.id} policy={policy} />
+      ))}
+    </main>
   );
 }
 
@@ -108,18 +88,11 @@ function SourceChip({ source }: { source: string }) {
 
   return (
     <span
-      style={{
-        padding: '0.2rem 0.6rem',
-        borderRadius: '10px',
-        fontSize: '0.7rem',
-        fontWeight: 'bold',
-        backgroundColor: isDb ? '#d1fae5' : '#fef3c7',
-        color: isDb ? '#065f46' : '#92400e',
-      }}
+      className="mono faint"
       title={
         isDb
           ? 'Loaded from PostgreSQL'
-          : 'PostgreSQL is not running — loaded from the committed seed documents in data/seed/'
+          : 'PostgreSQL is not running; loaded from the committed seed documents in data/seed/'
       }
     >
       {isDb ? 'postgres' : 'seed files (postgres down)'}
@@ -129,119 +102,64 @@ function SourceChip({ source }: { source: string }) {
 
 function PolicyCard({ policy }: { policy: Policy }) {
   return (
-    <div
-      style={{
-        border: '1px solid #ddd',
-        borderRadius: '8px',
-        padding: '1.5rem',
-        backgroundColor: 'white',
-      }}
-    >
-      <div style={{ marginBottom: '1rem' }}>
-        <h2 style={{ fontSize: '1.3rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-          {policy.title}
-        </h2>
-        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.875rem', color: '#666' }}>
-          <span>📄 {policy.sourceDocument}</span>
-          {policy.sectionRef && <span>§ {policy.sectionRef}</span>}
+    <section>
+      <p className="section-label">
+        Policy document · {policy.rules.length} {policy.rules.length === 1 ? 'rule' : 'rules'}
+      </p>
+      <div className="card">
+        <div className="card-pad">
+          <h2>{policy.title}</h2>
+          <p className="mono faint">
+            {policy.sourceDocument}
+            {policy.sectionRef && ` · ${policy.sectionRef}`}
+          </p>
         </div>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Rule</th>
+              <th>Type</th>
+              <th>Applies to</th>
+              <th>Threshold</th>
+            </tr>
+          </thead>
+          <tbody>
+            {policy.rules.map((rule) => (
+              <Fragment key={rule.id}>
+                <tr>
+                  <td className="mono">#{rule.id}</td>
+                  <td className="mono faint">{rule.ruleType}</td>
+                  <td>
+                    {rule.appliesTo === 'all' ? (
+                      <span className="faint">all</span>
+                    ) : (
+                      rule.appliesTo
+                    )}
+                  </td>
+                  <td>
+                    {rule.thresholdValue !== undefined && (
+                      <span className="amount">
+                        {rule.currency} {rule.thresholdValue.toLocaleString()}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={4}>
+                    <blockquote className="citation">
+                      {rule.sourcePassage}
+                      <span className="citation-ref">
+                        {policy.title}
+                        {policy.sectionRef && ` · ${policy.sectionRef}`}
+                      </span>
+                    </blockquote>
+                  </td>
+                </tr>
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
       </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {policy.rules.map((rule) => (
-          <RuleCard key={rule.id} rule={rule} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RuleCard({ rule }: { rule: PolicyRule }) {
-  const ruleTypeColors: Record<string, { bg: string; text: string; border: string }> = {
-    SPEND_THRESHOLD: { bg: '#dbeafe', text: '#1e40af', border: '#3b82f6' },
-    VENDOR_APPROVAL: { bg: '#d1fae5', text: '#065f46', border: '#10b981' },
-    SECURITY_REQUIREMENT: { bg: '#fef3c7', text: '#92400e', border: '#f59e0b' },
-  };
-
-  const colors = ruleTypeColors[rule.ruleType] ?? {
-    bg: '#f3f4f6',
-    text: '#374151',
-    border: '#9ca3af',
-  };
-
-  return (
-    <div
-      style={{
-        padding: '1rem',
-        backgroundColor: '#f9f9f9',
-        borderRadius: '6px',
-        borderLeft: `4px solid ${colors.border}`,
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          gap: '0.75rem',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          marginBottom: '0.75rem',
-        }}
-      >
-        <span
-          style={{
-            padding: '0.25rem 0.75rem',
-            borderRadius: '12px',
-            fontSize: '0.75rem',
-            fontWeight: 'bold',
-            backgroundColor: colors.bg,
-            color: colors.text,
-            border: `1px solid ${colors.border}`,
-          }}
-        >
-          {rule.ruleType.replace(/_/g, ' ')}
-        </span>
-
-        <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontFamily: 'monospace' }}>
-          rule #{rule.id}
-        </span>
-
-        {rule.thresholdValue !== undefined && (
-          <span style={{ fontSize: '0.875rem', fontWeight: 'bold', color: '#374151' }}>
-            Threshold: {rule.currency} {rule.thresholdValue.toLocaleString()}
-          </span>
-        )}
-
-        {rule.appliesTo && rule.appliesTo !== 'all' && (
-          <span style={{ fontSize: '0.875rem', color: '#666' }}>
-            Applies to: <strong>{rule.appliesTo}</strong>
-          </span>
-        )}
-      </div>
-
-      <div
-        style={{
-          padding: '0.75rem',
-          backgroundColor: 'white',
-          borderLeft: '3px solid #3b82f6',
-          fontStyle: 'italic',
-          fontSize: '0.875rem',
-          color: '#444',
-          lineHeight: '1.6',
-        }}
-      >
-        <div
-          style={{
-            fontSize: '0.75rem',
-            fontWeight: 'bold',
-            color: '#666',
-            marginBottom: '0.25rem',
-            fontStyle: 'normal',
-          }}
-        >
-          📋 POLICY CITATION
-        </div>
-        {rule.sourcePassage}
-      </div>
-    </div>
+    </section>
   );
 }

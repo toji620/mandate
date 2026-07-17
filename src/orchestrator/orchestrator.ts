@@ -417,4 +417,8 @@ export class MissionOrchestrator {
   }
 }
 
-export const orchestrator = new MissionOrchestrator();
+// Next.js dev mode compiles each API route as its own module graph, so a plain
+// module-level singleton yields one instance per route and missions vanish
+// between POST and GET. Stash the instance on globalThis so every route shares it.
+const g = globalThis as typeof globalThis & { __mandateOrchestrator?: MissionOrchestrator };
+export const orchestrator = (g.__mandateOrchestrator ??= new MissionOrchestrator());
