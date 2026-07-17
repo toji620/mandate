@@ -1,11 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { PendingApproval } from '@/src/orchestrator/types';
+import { ToastStack, type ToastItem } from '@/app/components/Toast';
 
 export default function ApprovalInbox() {
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const nextToastId = useRef(0);
+
+  const pushToast = (kicker: string, message: string) => {
+    const id = nextToastId.current++;
+    setToasts(prev => [...prev, { id, kicker, message }]);
+  };
+
+  const dismissToast = (id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
 
   // Poll for pending approvals
   useEffect(() => {
@@ -43,9 +55,14 @@ export default function ApprovalInbox() {
 
       // Remove from local state immediately for better UX
       setApprovals(prev => prev.filter(a => a.id !== approvalId));
+      if (action === 'approve') {
+        pushToast('APPROVED', 'Mission resumed');
+      } else {
+        pushToast('REJECTED', 'Proposal closed');
+      }
     } catch (error) {
       console.error('Error processing approval:', error);
-      alert(`Failed to ${action} action`);
+      pushToast('ERROR', 'Action failed, try again');
     } finally {
       setProcessing(null);
     }
@@ -85,6 +102,8 @@ export default function ApprovalInbox() {
           ))}
         </>
       )}
+
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </main>
   );
 }

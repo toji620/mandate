@@ -145,7 +145,13 @@ export default function FlightRecorder() {
         </div>
       )}
 
-      {selected && <DecisionReplay decision={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <DecisionReplay
+          key={`${selected.missionId}-${selected.stepNumber}-${selected.timestamp}`}
+          decision={selected}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </main>
   );
 }
@@ -215,11 +221,12 @@ function DecisionReplay({
       }}
     >
       <div
-        className="card card-pad"
+        className="card card-pad replay-modal"
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: '640px', width: '100%', maxHeight: '85vh', overflowY: 'auto' }}
       >
         <div
+          className="rv-1"
           style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -229,7 +236,9 @@ function DecisionReplay({
         >
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <span className={chipClass(decision.verdict)}>{decision.verdict}</span>
+              <span className={`${chipClass(decision.verdict)} stamp-in`}>
+                {decision.verdict}
+              </span>
               <strong>{sentenceCase(decision.actionType)}</strong>
             </div>
             <p className="muted" style={{ margin: '0.5rem 0 0.25rem' }}>
@@ -252,79 +261,85 @@ function DecisionReplay({
           </div>
         )}
 
-        <p className="section-label">Proposal</p>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'max-content 1fr',
-            columnGap: '1.25rem',
-            rowGap: '0.3rem',
-          }}
-        >
-          <span className="mono faint">agent</span>
-          <span className="mono">{decision.agentRole}</span>
-          <span className="mono faint">risk class</span>
-          <span className="mono">{decision.riskClass}</span>
-          {payloadEntries.map(([key, value]) => (
-            <span key={key} style={{ display: 'contents' }}>
-              <span className="mono faint">{key.replace(/_/g, ' ')}</span>
-              <span className={isAmountKey(key) ? 'amount' : 'mono'}>
-                {formatPayloadValue(value)}
+        <div className="rv-2">
+          <p className="section-label">Proposal</p>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'max-content 1fr',
+              columnGap: '1.25rem',
+              rowGap: '0.3rem',
+            }}
+          >
+            <span className="mono faint">agent</span>
+            <span className="mono">{decision.agentRole}</span>
+            <span className="mono faint">risk class</span>
+            <span className="mono">{decision.riskClass}</span>
+            {payloadEntries.map(([key, value]) => (
+              <span key={key} style={{ display: 'contents' }}>
+                <span className="mono faint">{key.replace(/_/g, ' ')}</span>
+                <span className={isAmountKey(key) ? 'amount' : 'mono'}>
+                  {formatPayloadValue(value)}
+                </span>
               </span>
-            </span>
-          ))}
+            ))}
+          </div>
         </div>
 
-        <p className="section-label">Decision</p>
-        <p style={{ margin: '0 0 0.5rem' }}>
-          <span className={chipClass(decision.verdict)}>{decision.verdict}</span>
-        </p>
-        <p style={{ margin: 0 }}>{decision.explanation}</p>
-        {decision.graniteExplanation &&
-          decision.graniteExplanation !== decision.explanation && (
-            <p className="muted" style={{ margin: '0.6rem 0 0' }}>
-              {decision.graniteExplanation}{' '}
-              <ExplanationSourceChip source={decision.explanationSource} />
-            </p>
+        <div className="rv-3">
+          <p className="section-label">Decision</p>
+          <p style={{ margin: '0 0 0.5rem' }}>
+            <span className={chipClass(decision.verdict)}>{decision.verdict}</span>
+          </p>
+          <p style={{ margin: 0 }}>{decision.explanation}</p>
+          {decision.graniteExplanation &&
+            decision.graniteExplanation !== decision.explanation && (
+              <p className="muted" style={{ margin: '0.6rem 0 0' }}>
+                {decision.graniteExplanation}{' '}
+                <ExplanationSourceChip source={decision.explanationSource} />
+              </p>
+            )}
+
+          {decision.sourcePassage && (
+            <>
+              <p className="section-label">Cited policy</p>
+              <blockquote className="citation" style={{ margin: 0 }}>
+                {decision.sourcePassage}
+                <span className="citation-ref">
+                  Policy document
+                  {decision.ruleId !== null ? ` · rule #${decision.ruleId}` : ''}
+                </span>
+              </blockquote>
+            </>
           )}
+        </div>
 
-        {decision.sourcePassage && (
-          <>
-            <p className="section-label">Cited policy</p>
-            <blockquote className="citation" style={{ margin: 0 }}>
-              {decision.sourcePassage}
-              <span className="citation-ref">
-                Policy document
-                {decision.ruleId !== null ? ` · rule #${decision.ruleId}` : ''}
+        <div className="rv-4">
+          <p className="section-label">Authority</p>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'max-content 1fr',
+              columnGap: '1.25rem',
+              rowGap: '0.45rem',
+              alignItems: 'center',
+            }}
+          >
+            <span className="mono faint">band</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span className={bandClass(decision.agentBandBefore)}>
+                {decision.agentBandBefore}
               </span>
-            </blockquote>
-          </>
-        )}
-
-        <p className="section-label">Authority</p>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'max-content 1fr',
-            columnGap: '1.25rem',
-            rowGap: '0.45rem',
-            alignItems: 'center',
-          }}
-        >
-          <span className="mono faint">band</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span className={bandClass(decision.agentBandBefore)}>
-              {decision.agentBandBefore}
+              <span className="mono faint">→</span>
+              <span className={bandClass(decision.agentBandAfter)}>
+                {decision.agentBandAfter}
+              </span>
             </span>
-            <span className="mono faint">→</span>
-            <span className={bandClass(decision.agentBandAfter)}>
-              {decision.agentBandAfter}
+            <span className="mono faint">reputation</span>
+            <span className="mono">
+              {decision.reputationBefore} → {decision.reputationAfter}
             </span>
-          </span>
-          <span className="mono faint">reputation</span>
-          <span className="mono">
-            {decision.reputationBefore} → {decision.reputationAfter}
-          </span>
+          </div>
         </div>
       </div>
     </div>

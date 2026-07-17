@@ -3,6 +3,7 @@
 import { Fragment, useState, useEffect, useRef } from 'react';
 import type { MissionStatus, MissionStep } from '@/src/orchestrator/types';
 import TypedText from '../components/TypedText';
+import TrustMeter from '../components/TrustMeter';
 
 const BAND_ORDER = ['PROBATION', 'SUPERVISED', 'TRUSTED'];
 
@@ -72,6 +73,14 @@ export default function MissionControl() {
     ? missions.find(m => m.id === selectedMission)
     : missions[missions.length - 1];
 
+  // Per-agent current band: latest step's agentStateAfter, ordered by first appearance.
+  const agentBands = new Map<MissionStep['agentRole'], MissionStep['agentStateAfter']['autonomyBand']>();
+  if (currentMission) {
+    for (const step of currentMission.steps) {
+      agentBands.set(step.agentRole, step.agentStateAfter.autonomyBand);
+    }
+  }
+
   return (
     <main className="page">
       <p className="page-eyebrow">Live authority feed</p>
@@ -124,6 +133,19 @@ export default function MissionControl() {
 
       {currentMission && currentMission.steps.length > 0 && (
         <>
+          <h2 className="section-label">Agents</h2>
+          <div className="card card-pad">
+            <div className="agent-row">
+              {Array.from(agentBands.entries()).map(([role, band]) => (
+                <div key={role} className="agent-cell">
+                  <span className="agent-name">{role}</span>
+                  <TrustMeter band={band} />
+                  <span className={`band band-${band.toLowerCase()}`}>{band}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <h2 className="section-label">Decision feed</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             {currentMission.steps.map((step) => {

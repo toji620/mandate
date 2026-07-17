@@ -768,3 +768,136 @@ input[type="radio"] {
 
 .loop-strip .ls-node.ai { border-color: var(--authority-line); color: var(--authority-deep); }
 .loop-strip .ls-arrow { color: var(--ink-faint); }
+
+/* ---------- Page transition ---------- */
+
+@keyframes pagefade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.page { animation: pagefade 360ms ease both; }
+
+/* ---------- Flight Recorder staged reveal ----------
+   The replay modal is an incident report that assembles itself:
+   verdict stamps first, then proposal, then the cited evidence
+   (with a highlight flash), then the authority section. */
+
+.rv-1, .rv-2, .rv-3, .rv-4 {
+  animation: rise 420ms cubic-bezier(0.16, 0.8, 0.3, 1) both;
+}
+
+.rv-1 { animation-delay: 40ms; }
+.rv-2 { animation-delay: 340ms; }
+.rv-3 { animation-delay: 640ms; }
+.rv-4 { animation-delay: 960ms; }
+
+.replay-modal .stamp-in { animation-delay: 120ms; }
+.replay-modal .stamp-in.chip-block { animation-delay: 120ms; }
+
+@keyframes cite-flash {
+  0%   { background: var(--authority-tint); }
+  100% { background: transparent; }
+}
+
+.rv-3 .citation { animation: cite-flash 1400ms 700ms both; }
+
+/* ---------- Trust meter: autonomy as a fillable instrument ---------- */
+
+.tmeter {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.tmeter .seg {
+  width: 22px;
+  height: 5px;
+  border-radius: 999px;
+  background: #e6e3ec;
+  overflow: hidden;
+  position: relative;
+}
+
+.tmeter .seg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--authority);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 650ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.tmeter .seg.fill::after { transform: scaleX(1); }
+
+.agent-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2.25rem;
+}
+
+.agent-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.agent-cell .agent-name {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+/* ---------- Toasts ---------- */
+
+.toast-stack {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  z-index: 100;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes toast-out {
+  to { opacity: 0; transform: translateY(8px); }
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--ink);
+  color: #ffffff;
+  font-size: 0.86rem;
+  padding: 0.65rem 1rem;
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(28, 24, 38, 0.25);
+  animation: toast-in 320ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+
+.toast.leaving { animation: toast-out 260ms ease both; }
+
+.toast .toast-kicker {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #c9b3f5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page, .rv-1, .rv-2, .rv-3, .rv-4, .rv-3 .citation, .toast, .toast.leaving {
+    animation: none;
+  }
+  .tmeter .seg::after { transition: none; }
+}
