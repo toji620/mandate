@@ -4,6 +4,12 @@ export interface MissionConfig {
   goal: string;
   mode: 'live' | 'replay';
   initialContext?: Record<string, unknown>;
+  /**
+   * How many times an agent may re-propose after a BLOCK, with the reason fed
+   * back. 0 in replay (a fixture returns the same proposal). >0 in live, so a
+   * blocked agent can correct itself but cannot spin forever.
+   */
+  maxRetriesPerStep?: number;
 }
 
 export interface MissionStep {
@@ -31,6 +37,8 @@ export interface MissionStatus {
   context: Record<string, unknown>;
   /** The policy rules this mission is being judged against, held for its whole life. */
   rules: PolicyRule[];
+  /** Retry cap after a BLOCK (live mode). 0 in replay. */
+  maxRetriesPerStep?: number;
   startedAt: Date;
   completedAt?: Date;
 }

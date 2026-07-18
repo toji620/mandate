@@ -1,11 +1,19 @@
 import type { ProposedAction, AgentState } from '@/src/types';
 import { proposeLive as proposeLiveAgent, type AgentRole } from './agents';
 
+import type { BlockedProposal } from './briefing';
+
 export interface MissionState {
   goal: string;
   currentStep: number;
   agentState: AgentState;
   context: Record<string, unknown>;
+  /** Rendered policy briefing. Empty string when POLICY_BRIEFING=none. */
+  briefing?: string;
+  /** What this mission has already had rejected, so the agent stops repeating it. */
+  blockedProposals?: BlockedProposal[];
+  /** What kind of action this step wants, so a live agent stays on the rails. */
+  expectedPhase?: string;
 }
 
 export type ProposalMode = 'live' | 'replay';

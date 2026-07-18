@@ -3,6 +3,7 @@ import { MissionOrchestrator, type TrustStore } from './orchestrator';
 import type { PolicyRule } from '@/src/types';
 import type { MissionStatus } from './types';
 import type { LedgerEvent } from '@/src/engine/evaluate';
+import type { BlockedProposal } from '@/src/agents/briefing';
 
 /**
  * An in-memory trust ledger so these tests never touch Postgres. Without it,
@@ -245,6 +246,41 @@ describe('MissionOrchestrator', () => {
 
     expect(mission.context.testKey).toBe('testValue');
     expect(mission.context.committedVendor).toBe('Dell');
+  });
+});
+
+describe('retry after a BLOCK', () => {
+  it('re-proposes with the block reason fed back, and stops after the cap', async () => {
+    const orchestrator = new MissionOrchestrator();
+    orchestrator.setTrustStore(memoryTrustStore());
+
+    const seen: Array<BlockedProposal[]> = [];
+    // A stub agent that always proposes an unapproved vendor. It can never
+    // succeed — the point is that the cap has to stop it looping forever.
+    orchestrator.setProposer(async (missionState) => {
+      seen.push(missionState.blockedProposals ?? []);
+      return {
+        agentId: 1,
+        actionType: 'select_supplier',
+        payload: { vendor: 'CheapTech', amount: 18000 },
+        riskClass: 'high',
+      };
+    });
+
+    const id = await orchestrator.startMission(
+      { goal: GOAL, mode: 'live', maxRetriesPerStep: 2 },
+      mockRules
+    );
+    await runToCompletion(orchestrator, id);
+
+    // Step 1: first attempt sees no history; the retries do.
+    expect(seen[0]).toEqual([]);
+    expect(seen[1].length).toBeGreaterThan(0);
+    expect(seen[1][0].reason).toContain('not on the approved vendor list');
+
+    // It gave up rather than spinning forever.
+    const mission = orchestrator.getMission(id)!;
+    expect(mission.status).toMatch(/completed|failed/);
   });
 });
 

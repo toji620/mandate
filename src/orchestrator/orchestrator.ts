@@ -8,6 +8,7 @@ import {
 } from '@/src/engine/evaluate';
 import { AGENT_ROLES, type AgentRole } from '@/src/agents/agents';
 import { propose } from '@/src/agents/propose';
+import { renderBriefing, type BlockedProposal, type BriefingMode } from '@/src/agents/briefing';
 import { explain } from '@/src/engine/explain';
 import { getModelId, isGraniteConfigured } from '@/src/granite/client';
 import { agentVersion } from '@/src/trust/version';
@@ -35,6 +36,17 @@ export interface TrustStore {
 /** The one agent whose trust this demo tracks. */
 const TRUST_ROLE = 'Sourcing Agent';
 
+/** What each mission step is for. Keeps a live agent on the rails. */
+const EXPECTED_PHASE = [
+  'gather_requirements',
+  'request_quotations',
+  'compare_vendors',
+  'select_supplier',
+  'commit_spend',
+  'select_supplier',
+  'issue_purchase_order',
+];
+
 /**
  * Mission orchestrator: a plain TypeScript state machine running
  *
@@ -60,6 +72,13 @@ export class MissionOrchestrator {
     this.trustStore = store;
   }
 
+  /** Production uses the real Granite/replay proposer. Tests inject a stub. */
+  private proposer: typeof propose = propose;
+
+  setProposer(fn: typeof propose): void {
+    this.proposer = fn;
+  }
+
   async startMission(config: MissionConfig, rules: PolicyRule[]): Promise<string> {
     const missionId = uuidv4();
 
@@ -73,6 +92,7 @@ export class MissionOrchestrator {
       pendingApprovals: [],
       context: config.initialContext ?? {},
       rules,
+      maxRetriesPerStep: config.maxRetriesPerStep,
       startedAt: new Date(),
     };
 
@@ -162,6 +182,11 @@ export class MissionOrchestrator {
     /** Spends a human has actually signed off. The agent cannot write to this. */
     const priorApprovals: ApprovedCommitment[] = [];
 
+    // Guidance for a live agent: the policy briefing (a suggestion — the
+    // evaluator still enforces), a memory of what got rejected, and a retry cap.
+    const briefing = renderBriefing(rules, (process.env.POLICY_BRIEFING as BriefingMode) ?? 'none');
+    const maxRetries = mission.maxRetriesPerStep ?? 0;
+
     const agentSequence: AgentRole[] = [
       'sourcing', // 1. gather requirements
       'sourcing', // 2. request quotations
@@ -189,18 +214,40 @@ export class MissionOrchestrator {
       };
 
       try {
-        const proposal = await propose(
-          {
-            goal: mission.goal,
-            currentStep: stepNumber,
-            agentState: agentStateBefore,
-            context: mission.context,
-          },
-          mission.mode,
-          mission.mode === 'live' ? agentRole : undefined
-        );
+        // Propose, evaluate, and — in live mode — let a blocked agent retry with
+        // the block reason fed back, up to the cap. Replay defaults to 0 retries
+        // (a fixture returns the same proposal, so a retry is pointless), which
+        // keeps the golden path exactly as recorded.
+        const blockedThisStep: BlockedProposal[] = [];
+        let proposal!: ProposedAction;
+        let decision!: ReturnType<typeof evaluate>;
 
-        const decision = evaluate(proposal, agentStateBefore, rules, { priorApprovals });
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          proposal = await this.proposer(
+            {
+              goal: mission.goal,
+              currentStep: stepNumber,
+              agentState: agentStateBefore,
+              context: mission.context,
+              briefing,
+              blockedProposals: [...blockedThisStep],
+              expectedPhase: EXPECTED_PHASE[i],
+            },
+            mission.mode,
+            mission.mode === 'live' ? agentRole : undefined
+          );
+
+          decision = evaluate(proposal, agentStateBefore, rules, { priorApprovals });
+
+          if (decision.verdict !== 'BLOCK') break;
+
+          // Remember the rejection so the next attempt does not repeat it.
+          blockedThisStep.push({
+            actionType: proposal.actionType,
+            payload: proposal.payload,
+            reason: decision.explanation,
+          });
+        }
 
         if (decision.verdict === 'BLOCK') {
           const bandAfter = demote(before.currentBand);

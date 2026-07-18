@@ -1,5 +1,6 @@
 import type { ProposedAction, AgentState } from '@/src/types';
 import type { MissionState } from './propose';
+import { renderBlockedProposals } from './briefing';
 import { graniteChat } from '@/src/granite/client';
 
 /**
@@ -101,24 +102,33 @@ export async function proposeLive(
 }
 
 /**
- * Build the full prompt for Granite including role, mission context, and current state
+ * Build the full prompt for Granite: role, optional policy briefing, mission,
+ * expected phase for this step, state so far, and anything already rejected.
  */
 function buildAgentPrompt(
   roleConfig: typeof AGENT_ROLES[AgentRole],
   missionState: MissionState
 ): string {
-  let prompt = roleConfig.prompt;
-  
-  prompt += `\n\n=== MISSION ===\nGoal: ${missionState.goal}\n`;
-  prompt += `Current Step: ${missionState.currentStep}\n`;
-  
-  if (Object.keys(missionState.context).length > 0) {
-    prompt += `\nContext:\n${JSON.stringify(missionState.context, null, 2)}\n`;
+  const parts: string[] = [roleConfig.prompt];
+
+  if (missionState.briefing) parts.push(missionState.briefing);
+
+  parts.push(`=== MISSION ===\nGoal: ${missionState.goal}\nCurrent step: ${missionState.currentStep}`);
+
+  if (missionState.expectedPhase) {
+    parts.push(`This step must be a "${missionState.expectedPhase}" action. Set actionType to exactly that.`);
   }
-  
-  prompt += `\n=== YOUR TASK ===\nPropose the next action to progress toward the mission goal. Respond with ONLY a JSON object, no other text.\n`;
-  
-  return prompt;
+
+  if (Object.keys(missionState.context).length > 0) {
+    parts.push(`=== STATE SO FAR ===\n${JSON.stringify(missionState.context, null, 2)}`);
+  }
+
+  const rejected = renderBlockedProposals(missionState.blockedProposals ?? []);
+  if (rejected) parts.push(rejected);
+
+  parts.push('Propose the next action. Respond with ONLY a JSON object, no other text.');
+
+  return parts.join('\n\n');
 }
 
 /**
