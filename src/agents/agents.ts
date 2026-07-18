@@ -116,7 +116,13 @@ function buildAgentPrompt(
   parts.push(`=== MISSION ===\nGoal: ${missionState.goal}\nCurrent step: ${missionState.currentStep}`);
 
   if (missionState.expectedPhase) {
-    parts.push(`This step must be a "${missionState.expectedPhase}" action. Set actionType to exactly that.`);
+    parts.push(
+      `This step must be a "${missionState.expectedPhase}" action. Set actionType to exactly that.\n` +
+        'PAYLOAD RULES:\n' +
+        '- Include a "vendor" field ONLY for select_supplier, commit_spend and issue_purchase_order — never on gather/quote/compare actions.\n' +
+        '- A "vendor" must be exactly ONE supplier name from candidateSuppliers, not a list.\n' +
+        '- For commit_spend and issue_purchase_order, include a numeric "amount" in GBP (20 developer laptops total roughly 22000–24000).'
+    );
   }
 
   if (Object.keys(missionState.context).length > 0) {
