@@ -8,7 +8,7 @@
  * nothing else changes.
  */
 
-const DEFAULT_MODEL_ID = 'ibm/granite-3-3-8b-instruct';
+const DEFAULT_MODEL_ID = 'ibm/granite-3-8b-instruct';
 const DEFAULT_URL = 'https://us-south.ml.cloud.ibm.com';
 
 export class GraniteNotConfiguredError extends Error {

@@ -14,6 +14,7 @@
     "db:migrate": "drizzle-kit push",
     "db:seed": "tsx scripts/seed.ts",
     "db:reset": "docker compose down -v && docker compose up -d && node -e \"setTimeout(()=>process.exit(0),9000)\" && drizzle-kit push --force && tsx scripts/seed.ts",
+    "models:list": "tsx scripts/list-models.ts",
     "explain:demo": "tsx scripts/explain-demo.ts",
     "mission:live": "tsx scripts/run-live-mission.ts",
     "export:training": "tsx scripts/export-training-data.ts",

@@ -3,6 +3,10 @@
  * Usage: npm run mission:live
  */
 
+// Must be first: loads .env before any module that reads it at import time
+// (the DB pool and the Granite client both do).
+import 'dotenv/config';
+
 import { orchestrator } from '@/src/orchestrator/orchestrator';
 import type { PolicyRule } from '@/src/types';
 import * as fs from 'fs';

@@ -30,7 +30,7 @@ describe('Granite client configuration', () => {
   });
 
   it('defaults to a current Granite model, not the withdrawn granite-13b-chat-v2', () => {
-    expect(getModelId()).toBe('ibm/granite-3-3-8b-instruct');
+    expect(getModelId()).toBe('ibm/granite-3-8b-instruct');
     expect(getModelId()).not.toContain('13b-chat-v2');
   });
 
