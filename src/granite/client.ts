@@ -8,7 +8,10 @@
  * nothing else changes.
  */
 
-const DEFAULT_MODEL_ID = 'ibm/granite-3-8b-instruct';
+// granite-4-h-small follows instructions markedly better than granite-3-8b-instruct:
+// on the same procurement mission it kept to approved vendors where the 3-8b model
+// broke policy twice. Overridable with WATSONX_MODEL_ID (e.g. a fine-tuned model).
+const DEFAULT_MODEL_ID = 'ibm/granite-4-h-small';
 const DEFAULT_URL = 'https://us-south.ml.cloud.ibm.com';
 
 export class GraniteNotConfiguredError extends Error {

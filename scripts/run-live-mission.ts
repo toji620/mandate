@@ -43,6 +43,19 @@ const mockRules: PolicyRule[] = [
     appliesTo: 'Lenovo',
     sourcePassage: 'Approved Vendor List: Lenovo is an approved supplier',
   },
+  {
+    // Lenovo is approved but currently suspended. A competent agent may still
+    // pick it on price/quality — it has no way to know the suspension. The
+    // evaluator does, and blocks it. This is the realistic "trip an honest
+    // agent" case: a good decision that policy overrides on information the
+    // agent never had.
+    id: 5,
+    policyId: 3,
+    ruleType: 'VENDOR_SUSPENSION',
+    appliesTo: 'Lenovo',
+    sourcePassage:
+      'Vendor Risk Register 2026-Q3: Lenovo is suspended pending a supply-chain security audit; no new orders may be placed',
+  },
 ];
 
 async function runLiveMission() {
