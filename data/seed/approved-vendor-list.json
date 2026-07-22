@@ -22,6 +22,11 @@
       "ruleType": "VENDOR_APPROVAL",
       "appliesTo": "Apple",
       "sourcePassage": "Approved Vendor List: Apple is an approved supplier for IT equipment with established contract terms"
+    },
+    {
+      "ruleType": "VENDOR_SUSPENSION",
+      "appliesTo": "Lenovo",
+      "sourcePassage": "Approved Vendor List addendum 2026-Q3: Lenovo is temporarily suspended pending completion of a supply-chain security audit; no new orders may be placed until the suspension is lifted"
     }
   ]
 }
