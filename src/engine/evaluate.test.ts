@@ -371,12 +371,25 @@ describe('Reputation and band computation from ledger history', () => {
     expect(result.currentBand).toBe('PROBATION');
   });
 
-  it('promotes SUPERVISED -> TRUSTED at 10 reputation with 2 approved spends', () => {
-    const result = computeBand([...many(8), ...many(2, true)]);
+  it('promotes SUPERVISED -> TRUSTED at exactly the reputation threshold with the required approved spends', () => {
+    const rep = PROMOTION_THRESHOLDS.SUPERVISED_TO_TRUSTED;
+    const spends = PROMOTION_THRESHOLDS.SUPERVISED_TO_TRUSTED_SPENDS;
+    // Enough clean actions to reach the reputation bar, of which `spends` are
+    // approved spends. Reachable inside a single flawless mission.
+    const result = computeBand([...many(rep - spends), ...many(spends, true)]);
 
-    expect(result.reputation).toBe(10);
-    expect(result.approvedSpendCount).toBe(2);
+    expect(result.reputation).toBe(rep);
+    expect(result.approvedSpendCount).toBe(spends);
     expect(result.currentBand).toBe('TRUSTED');
+  });
+
+  it('does not promote to TRUSTED one reputation short of the threshold', () => {
+    const rep = PROMOTION_THRESHOLDS.SUPERVISED_TO_TRUSTED;
+    const spends = PROMOTION_THRESHOLDS.SUPERVISED_TO_TRUSTED_SPENDS;
+    const result = computeBand([...many(rep - spends - 1), ...many(spends, true)]);
+
+    expect(result.reputation).toBe(rep - 1);
+    expect(result.currentBand).toBe('SUPERVISED');
   });
 
   it('withholds TRUSTED when the reputation is there but the approved spends are not', () => {
@@ -385,6 +398,26 @@ describe('Reputation and band computation from ledger history', () => {
     expect(result.reputation).toBe(12);
     expect(result.approvedSpendCount).toBe(0);
     expect(result.currentBand).toBe('SUPERVISED');
+  });
+
+  it('earns TRUSTED across a single flawless procurement mission', () => {
+    // The seven clean events a mission produces when the agent never trips a
+    // block: three reads, a selection, a committed spend, a second selection, and
+    // the purchase order. Two of them are approved spends. If an honest mission
+    // cannot reach the top band, the band ceiling is unreachable in practice.
+    const flawlessMission: LedgerEvent[] = [
+      clean(), // gather_requirements
+      clean(), // request_quotations
+      clean(), // compare_vendors  -> SUPERVISED here
+      clean(), // select_supplier
+      clean(true), // commit_spend  (approved spend #1)
+      clean(), // select_supplier
+      clean(true), // issue_purchase_order (approved spend #2)
+    ];
+
+    const result = computeBand(flawlessMission);
+
+    expect(result.currentBand).toBe('TRUSTED');
   });
 
   it('demotes exactly one band on a BLOCK', () => {

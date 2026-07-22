@@ -199,7 +199,7 @@ describe('INVARIANT: a purchase order may only execute a spend a human already a
       },
       agentIn('PROBATION'),
       rules,
-      { priorApprovals: [{ vendor: 'Dell', amount: 22400 }] }
+      { priorApprovals: [{ actionType: 'commit_spend', vendor: 'Dell', amount: 22400 }] }
     );
 
     expect(decision.verdict).toBe('ALLOW');
@@ -215,7 +215,7 @@ describe('INVARIANT: a purchase order may only execute a spend a human already a
       },
       agentIn('TRUSTED'),
       rules,
-      { priorApprovals: [{ vendor: 'Dell', amount: 22400 }] } // approved 22,400, not 30,000
+      { priorApprovals: [{ actionType: 'commit_spend', vendor: 'Dell', amount: 22400 }] } // approved 22,400, not 30,000
     );
 
     expect(decision.verdict).toBe('APPROVAL');
@@ -231,7 +231,7 @@ describe('INVARIANT: a purchase order may only execute a spend a human already a
       },
       agentIn('TRUSTED'),
       rules,
-      { priorApprovals: [{ vendor: 'Dell', amount: 22400 }] } // approved Dell, not HP
+      { priorApprovals: [{ actionType: 'commit_spend', vendor: 'Dell', amount: 22400 }] } // approved Dell, not HP
     );
 
     expect(decision.verdict).toBe('APPROVAL');

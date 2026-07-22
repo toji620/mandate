@@ -103,6 +103,24 @@ function checkPolicy(
         sourcePassage: citedRule.sourcePassage,
       };
     }
+
+    // A vendor can be on the approved list yet temporarily SUSPENDED — e.g.
+    // pending a security audit. Using one is barred until the suspension lifts.
+    // This is enforcement the agent cannot reason its way around: the list has a
+    // state the agent never sees, so a perfectly sensible supplier choice is
+    // still stopped. Checked after approval, so an unapproved vendor is named as
+    // such rather than as merely suspended.
+    const suspension = rules.find(
+      (r) => r.ruleType === 'VENDOR_SUSPENSION' && r.appliesTo === vendor
+    );
+    if (suspension) {
+      return {
+        verdict: 'BLOCK',
+        ruleId: suspension.id,
+        explanation: `Vendor "${vendor}" is currently suspended and cannot be used`,
+        sourcePassage: suspension.sourcePassage,
+      };
+    }
   }
 
   // Equipment that needs a security sign-off cannot proceed without one.
@@ -123,9 +141,26 @@ function checkPolicy(
   // approved this exact commitment, in which case executing it is paperwork,
   // not a new decision.
   if (SPEND_COMMITTING_ACTIONS.includes(action.actionType)) {
-    const amount = action.payload.amount as number | undefined;
+    const amount = readAmount(action.payload);
 
-    if (amount !== undefined) {
+    if (amount === undefined) {
+      // The action moves money but did not say how much, so it CANNOT be checked
+      // against the threshold. Fail closed: unverifiable is not the same as
+      // permitted. This previously fell through to ALLOW, which meant an agent
+      // could evade the threshold entirely by naming the field something else —
+      // exactly what Granite did when it wrote "amountGBP".
+      const thresholdRule = rules.find((r) => r.ruleType === 'SPEND_THRESHOLD');
+      return {
+        verdict: 'APPROVAL',
+        ruleId: thresholdRule?.id,
+        explanation:
+          `${action.actionType} commits funds but declared no numeric "amount", so it ` +
+          'cannot be checked against the spend threshold and must be approved by a human',
+        sourcePassage: thresholdRule?.sourcePassage ?? 'Spend thresholds require a stated amount',
+      };
+    }
+
+    {
       // When several thresholds are crossed (e.g. GBP 10,000 -> Finance Director
       // AND GBP 50,000 -> CFO), the binding one is the HIGHEST. Cite that, so the
       // decision names the approver who actually has to sign.
@@ -167,17 +202,42 @@ function checkPolicy(
 }
 
 /**
- * True when a human has already approved this exact vendor and amount.
+ * Reads a spend amount that can actually be compared against a threshold.
  *
- * Exact match on both, so an agent cannot inflate the amount or swap the vendor
- * on a purchase order after the approval was granted.
+ * Anything that is not a finite number — missing, misnamed, a string, NaN —
+ * comes back undefined, and every caller treats undefined as "cannot verify"
+ * rather than "no limit applies".
+ */
+function readAmount(payload: Record<string, unknown>): number | undefined {
+  const raw = payload.amount;
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
+}
+
+/**
+ * True when a human has already approved this exact spend.
+ *
+ * Three conditions, all required:
+ *
+ *  1. The approval was granted on an action that ACTUALLY COMMITS MONEY. A human
+ *     approving `select_supplier` chose a supplier; they did not authorise a
+ *     spend, and their click must not be redeemable as one.
+ *  2. Vendor and amount are both actually present on this action. A spend that
+ *     identifies neither is never pre-approved — otherwise `undefined ===
+ *     undefined` lets a blank approval satisfy a blank spend.
+ *  3. Vendor and amount match exactly, so an agent cannot inflate the sum or
+ *     swap the supplier after the approval was granted.
  */
 function hasMatchingApproval(action: ProposedAction, context: EvaluationContext): boolean {
-  const vendor = action.payload.vendor as string | undefined;
-  const amount = action.payload.amount as number | undefined;
+  const vendor = action.payload.vendor;
+  const amount = readAmount(action.payload);
+
+  if (typeof vendor !== 'string' || amount === undefined) return false;
 
   return context.priorApprovals.some(
-    (approved) => approved.vendor === vendor && approved.amount === amount
+    (approved) =>
+      SPEND_COMMITTING_ACTIONS.includes(approved.actionType) &&
+      approved.vendor === vendor &&
+      approved.amount === amount
   );
 }
 
@@ -259,7 +319,12 @@ function checkBand(
  */
 export const PROMOTION_THRESHOLDS = {
   PROBATION_TO_SUPERVISED: 3,
-  SUPERVISED_TO_TRUSTED: 10,
+  // Reachable inside one flawless seven-step mission (which yields 7 clean actions,
+  // two of them approved spends). At 10 the top band was unreachable in practice:
+  // a mission caps at 7 clean actions and any block resets reputation to zero, so
+  // no agent ever demonstrated TRUSTED. The spend requirement stays at 2, so the
+  // band is still earned by repeated responsible spending, not a single purchase.
+  SUPERVISED_TO_TRUSTED: 6,
   SUPERVISED_TO_TRUSTED_SPENDS: 2,
 } as const;
 
