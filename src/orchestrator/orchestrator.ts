@@ -307,8 +307,11 @@ export class MissionOrchestrator {
 
           mission.status = 'running';
 
-          // A human signed this spend. The evaluator may now rely on it.
+          // A human signed THIS action. Record which one: the evaluator only
+          // honours an approval for the action type it was actually granted on,
+          // so approving a supplier choice cannot later authorise a spend.
           priorApprovals.push({
+            actionType: proposal.actionType,
             vendor: proposal.payload.vendor as string | undefined,
             amount: proposal.payload.amount as number | undefined,
           });

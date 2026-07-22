@@ -1,5 +1,6 @@
 import type { ProposedAction, AgentState } from '@/src/types';
 import { proposeLive as proposeLiveAgent, type AgentRole } from './agents';
+import { normalizeProposal } from './normalize';
 
 import type { BlockedProposal } from './briefing';
 
@@ -27,15 +28,29 @@ export async function propose(
   mode: ProposalMode = 'replay',
   role?: AgentRole
 ): Promise<ProposedAction> {
+  const raw = await proposeRaw(missionState, mode, role);
+
+  // Canonicalise before the proposal reaches the evaluator: a live model does
+  // not always put the spend amount in a field called `amount`. This interprets
+  // the common cases deterministically; the evaluator still fails closed on
+  // anything left ambiguous. See src/agents/normalize.ts.
+  return normalizeProposal(raw);
+}
+
+async function proposeRaw(
+  missionState: MissionState,
+  mode: ProposalMode,
+  role?: AgentRole
+): Promise<ProposedAction> {
   if (mode === 'replay') {
     return proposeReplay(missionState);
   }
-  
+
   // Live mode requires a role
   if (!role) {
     throw new Error('Live mode requires an agent role to be specified');
   }
-  
+
   return proposeLiveAgent(role, missionState, missionState.agentState);
 }
 

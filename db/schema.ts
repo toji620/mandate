@@ -3,7 +3,7 @@ import { pgTable, serial, text, integer, timestamp, jsonb, pgEnum, boolean } fro
 // Enums
 export const autonomyBandEnum = pgEnum('autonomy_band', ['PROBATION', 'SUPERVISED', 'TRUSTED']);
 export const verdictEnum = pgEnum('verdict', ['ALLOW', 'REVIEW', 'APPROVAL', 'BLOCK']);
-export const ruleTypeEnum = pgEnum('rule_type', ['SPEND_THRESHOLD', 'VENDOR_APPROVAL', 'SECURITY_REQUIREMENT']);
+export const ruleTypeEnum = pgEnum('rule_type', ['SPEND_THRESHOLD', 'VENDOR_APPROVAL', 'VENDOR_SUSPENSION', 'SECURITY_REQUIREMENT']);
 export const eventTypeEnum = pgEnum('event_type', ['PROMOTION', 'DEMOTION', 'CLEAN_ACTION']);
 
 // Agents table

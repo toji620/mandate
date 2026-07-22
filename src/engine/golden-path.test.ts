@@ -122,6 +122,7 @@ async function runGoldenPath(): Promise<StepResult[]> {
       // REVIEW and APPROVAL reach a human, who approves. ALLOW just runs.
       if (decision.verdict === 'REVIEW' || decision.verdict === 'APPROVAL') {
         priorApprovals.push({
+          actionType: proposal.actionType,
           vendor: proposal.payload.vendor as string | undefined,
           amount: proposal.payload.amount as number | undefined,
         });
