@@ -40,7 +40,11 @@ next-env.d.ts
 .vitest
 
 # exported training data (regenerated from the decisions in Postgres)
-/data/training/
+/data/training/*
+# ...except the tuning run logbook: it is the durable, append-only record of
+# every fine-tune (dataset fingerprint, watsonx job, cost, before/after scores).
+# It cannot be regenerated, so it is tracked, not ignored.
+!/data/training/runs.jsonl
 
 # python virtual environment for the Docling scripts (rebuilt from
 # scripts/docling/requirements.txt — never committed, like node_modules)
