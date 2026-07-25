@@ -29,10 +29,18 @@ export interface TuningRunRecord {
   baseModelId: string;
   /** The tuned model's id, once the job produces one. null until then. */
   tunedModelId: string | null;
-  datasetPath: string;
+  /** Where the training data came from, or `null` for a scoring-only run. */
+  datasetPath: string | null;
   datasetPairCount: number;
-  /** Hash of the exact training data, so a run is tied to the data it saw. */
-  datasetFingerprint: string;
+  /**
+   * Hash of the exact training data, so a run is tied to the data it saw.
+   *
+   * `null` means this record has no dataset behind it — a scoring-only run, where
+   * nothing was trained. That is deliberately representable: a fabricated hash
+   * would make an unverifiable record look verified, which is the one thing this
+   * log exists to prevent.
+   */
+  datasetFingerprint: string | null;
   hyperparameters: Record<string, unknown>;
   watsonxJobId: string | null;
   costCredits: number | null;

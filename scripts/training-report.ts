@@ -17,6 +17,34 @@ import { scoreRun, compareRuns, type RunStep, type RunScore } from '@/src/traini
 import { appendRunRecord, fingerprintDataset, type TuningRunRecord } from '@/src/training/run-log';
 
 const RUN_LOG = 'data/training/runs.jsonl';
+const DATASET = 'data/training/preferences.jsonl';
+
+interface Dataset {
+  path: string | null;
+  count: number;
+  fingerprint: string | null;
+}
+
+/**
+ * Reads the exported preference dataset, if one exists.
+ *
+ * The fingerprint is taken over the pairs themselves, never over the file name —
+ * the whole point of the field is to answer "which data did this run see?", and
+ * two runs on completely different data can share a path. When there is no
+ * dataset at all this returns nulls rather than a stand-in hash: a scoring-only
+ * run trained on nothing, and the log should say so.
+ */
+function loadDataset(): Dataset {
+  if (!fs.existsSync(DATASET)) return { path: null, count: 0, fingerprint: null };
+
+  const pairs = fs
+    .readFileSync(DATASET, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line) as unknown);
+
+  return { path: DATASET, count: pairs.length, fingerprint: fingerprintDataset(pairs) };
+}
 
 interface Capture {
   model?: string;
@@ -74,6 +102,8 @@ function main(): void {
       `${cmp.improved ? 'IMPROVED' : 'no improvement'}`
   );
 
+  const dataset = loadDataset();
+
   const record: TuningRunRecord = {
     runId: `run-${new Date().toISOString().replace(/[:.]/g, '-')}`,
     createdAt: new Date().toISOString(),
@@ -81,11 +111,9 @@ function main(): void {
     method: 'baseline-comparison', // a real weight-tune will log method: 'dpo'
     baseModelId: base.model,
     tunedModelId: tuned.model,
-    datasetPath: fs.existsSync('data/training/preferences.jsonl')
-      ? 'data/training/preferences.jsonl'
-      : 'n/a',
-    datasetPairCount: 0,
-    datasetFingerprint: fingerprintDataset([baseFile, tunedFile]),
+    datasetPath: dataset.path,
+    datasetPairCount: dataset.count,
+    datasetFingerprint: dataset.fingerprint,
     hyperparameters: {},
     watsonxJobId: null,
     costCredits: 0,
@@ -95,7 +123,14 @@ function main(): void {
     notes: `Compared ${baseFile} vs ${tunedFile}`,
   };
   appendRunRecord(record, RUN_LOG);
-  console.log(`\nLogged run ${record.runId} -> ${RUN_LOG}\n`);
+
+  console.log(`\nLogged run ${record.runId} -> ${RUN_LOG}`);
+  console.log(
+    dataset.fingerprint
+      ? `  dataset ${dataset.path} — ${dataset.count} pairs, fingerprint ${dataset.fingerprint}`
+      : `  no dataset (${DATASET} not found) — scoring-only run, nothing was trained`
+  );
+  console.log('');
 }
 
 main();
