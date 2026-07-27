@@ -1,8 +1,12 @@
 name: CI
 
+# Feature branches are listed explicitly because CI that only watches `main` runs
+# on nothing while the work is in progress, and an Actions tab with no runs looks
+# exactly like one full of passing runs. All of Stage 4.5 was built without a
+# single CI run backing it for precisely this reason.
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, 'merge/**', 'fix/**', 'feat/**' ]
   pull_request:
     branches: [ main, develop ]
 

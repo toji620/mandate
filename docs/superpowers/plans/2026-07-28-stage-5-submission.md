@@ -1,147 +1,166 @@
-# Stage 5/6 — Submission readiness
+# Stage 5/6 — Submission readiness (complete plan)
 
-**Status: audit done 2026-07-28. Nothing below is started.**
+**Last updated 2026-07-28.** This is the single plan for everything between here and
+submission. Stage 4.5 has its own plan
+([`2026-07-14-stage-4.5-make-the-ai-real.md`](2026-07-14-stage-4.5-make-the-ai-real.md))
+and is finished apart from one optional, credit-spending item (§6 below).
 
-Stage 4.5 has its own plan (`2026-07-14-stage-4.5-make-the-ai-real.md`) and is
-effectively finished. This plan covers the only thing left: getting what exists in
-front of a judge. Everything here was verified against the repo on 2026-07-28, not
-assumed.
+Everything here was verified against the repo, not assumed. Where something is
+claimed done, the evidence is named.
 
-> **Deadline conflict — resolve first.** `SPEC.md` line 225 says *"Buffer July 29-30;
+> **Deadline conflict — resolve first.** `SPEC.md:225` says *"Buffer July 29-30;
 > submit July 30; nothing new after July 28."* The user believes the deadline is
-> **July 31**. If 31 is right, SPEC.md is stale and should be corrected, because the
-> "nothing new after July 28" rule is what decides whether items 6-8 below are in
-> scope at all. Until confirmed, this plan assumes the tighter date.
+> **July 31**. If 31 is right, SPEC.md is stale and should be corrected, because
+> "nothing new after July 28" is what decides whether §6 is in scope at all.
 
 ---
 
-## The one that actually loses the submission
+## 1. Done 2026-07-28
 
-- [ ] **1. `origin/main` is 9 commits behind. Judges clone `main`.**
+- [x] **Citation integrity was silently broken. Fixed.**
 
-`origin/main` is at `e4e3aa3` ("Hero speaks in IBM Plex Serif"). Every piece of
-Stage 4.5 — live Granite, the policy briefing, the hardened evaluator, vendor
-suspension, the training harness — is on `merge/live-onto-ui` and **invisible on the
-default branch**. A judge who clones this repo today does not see the project.
+  This was the serious one. `npm run policies:parse` re-parses the source PDFs with
+  Docling and fails if any rule cites a sentence absent from its document — and it
+  **was failing**, 11 of 12. The vendor-suspension rule added on 2026-07-25 (commit
+  `ecb47ab`) cited an *"Approved Vendor List addendum 2026-Q3"* that did not exist in
+  `approved-vendor-list.pdf`. The README meanwhile claimed every citation was
+  verified to appear verbatim in the source. That claim was false for four days, and
+  a judge running the documented Docling command would have hit the failure.
 
-There is no merge conflict risk: `origin/main` is a clean ancestor, 0 behind / 9
-ahead, so it fast-forwards.
+  Fixed the way `extract.py` itself prescribes — correct the document, never the
+  citation: the addendum was added to `scripts/docling/make_pdfs.py`, PDFs
+  regenerated, Docling re-run. **Now passes 12/12**, verified by actually running it,
+  not by inspection.
+
+- [x] **`npm test` no longer hangs.** It was bare `vitest` — watch mode — so the
+  command the README hands a judge never returns. Now `vitest run`, with
+  `npm run test:watch` for development. (CI was unaffected: vitest disables watch when
+  `CI` is set.)
+
+- [x] **CI now runs on feature branches.** `ci.yml` triggered only on `main` and
+  `develop`, neither of which matches the working branch, so **no CI run backs any of
+  Stage 4.5**. Added `merge/**`, `fix/**`, `feat/**` to the push trigger. An Actions
+  tab with no runs looks exactly like one full of passing runs — that is why this went
+  unnoticed for two weeks.
+
+- [x] **README — the autonomy bands were described wrongly.** It said PROBATION
+  requires approval for *every* action (read-only actions actually run unwatched) and
+  that SUPERVISED commercial actions "require approval" when the code returns
+  **REVIEW** (`src/engine/evaluate.ts:283-294`). The demo visibly shows step 4 as
+  REVIEW and step 5 as APPROVAL, so the README was contradicting the video. Replaced
+  with a band table matching the code, plus the reputation-reset rule that gives
+  demotion teeth.
+
+- [x] **README — "impact stats with citations" added.** This was the one named Stage 5
+  acceptance criterion with nothing written against it. Every figure names the command
+  or file that proves it. No market or cost-saving statistics were invented; the
+  section says so explicitly and explains why.
+
+- [x] **README — the learning loop and cross-mission trust documented.** The strongest
+  AI-approach material in the project was absent from the section judged on AI
+  approach.
+
+- [x] **README — project structure refreshed.** It omitted `src/training/`,
+  `src/trust/`, `src/orchestrator/`, `src/policies/`, `src/granite/` and all four
+  screens. Verified against the actual tree.
+
+---
+
+## 2. The merge — deferred by the user, but it is what decides the submission
+
+- [ ] **`origin/main` is 9 commits behind, and judges clone `main`.**
+
+`origin/main` sits at `e4e3aa3` ("Hero speaks in IBM Plex Serif"). Live Granite, the
+hardened evaluator, vendor suspension, the training harness — none of it is on the
+default branch. **A judge cloning this repo today does not see the project.**
+
+Deliberately not done on 2026-07-28 at the user's instruction. It remains the single
+highest-value action available, and it fast-forwards cleanly (0 behind / 9 ahead, no
+conflicts):
 
 ```bash
-git branch -f main origin/main     # the local main ref is a stale orphan, fix it first
+git branch -f main origin/main      # the LOCAL main ref is a stale orphan — fix it first
 git checkout main
 git merge --ff-only merge/live-onto-ui
 git push origin main
 ```
 
-Verify after: `git log --oneline -1 origin/main` shows the training commit, and a
-fresh clone into a temp directory runs the quick start from the README.
-
-- [ ] **2. CI has never run on any of this work.**
-
-`.github/workflows/ci.yml` triggers only on `main` and `develop`. The branch all the
-work lives on is `merge/live-onto-ui`, which matches neither, so **no CI run exists
-for any Stage 4.5 commit.** SPEC.md Stage 1 requires "CI runs lint + tests on push"
-and Stage 2 requires "golden-path test green in CI" — currently unevidenced.
-
-Fixing item 1 triggers CI automatically (push to `main`). Watch that run and confirm
-it is green before recording anything. Consider also adding the working branch to the
-trigger list so this cannot recur:
-
-```yaml
-on:
-  push:
-    branches: [ main, develop, 'merge/**', 'fix/**' ]
-```
-
-(Note: `develop` in that trigger list is probably what "push into dev" meant. No
-`develop` branch exists. Creating one is optional — merging to `main` is what matters.)
+Acceptance: `git log --oneline -1 origin/main` shows the latest work, and the CI run
+triggered by that push is green.
 
 ---
 
-## README — Stage 5's actual acceptance criteria
+## 3. Verify — cheap, and nothing else is trustworthy without it
 
-SPEC.md Stage 5 requires: *"README finalised (problem, solution, AI approach/
-architecture, wildcard theme, Bob usage, impact stats with citations)."* Current
-README was last touched 2026-07-16. Present: problem ✅, solution ✅, AI approach ✅,
-wildcard theme ✅, Bob usage ✅.
+- [ ] **Watch the first CI run go green.** Until §2 or a push to the working branch
+  happens, no run exists. The golden path green in CI is a SPEC Stage 2 requirement.
 
-- [ ] **3. "Impact stats with citations" is missing entirely.** No such section
-  exists. This is a named, explicit acceptance criterion — the only one outright
-  absent. Needs real numbers with sources, not invented ones. Candidates the repo can
-  actually support: 11 rules extracted across 4 policy documents with every
-  `sourcePassage` verified verbatim against Docling-parsed text; 117 tests; the
-  7-step golden path; the block rate from `training-report.ts`.
+- [ ] **Fresh-clone check.** Clone to a clean directory and run the README quick start
+  verbatim — `npm install`, `cp .env.example .env`, `db:up`, `db:migrate`, `db:seed`,
+  `dev` — and confirm all four screens load. The README is the judge's first execution
+  path and has never been run end to end from scratch.
 
-- [ ] **4. The band descriptions are wrong.** README lines 22-24 contradict both
-  SPEC.md and `src/engine/evaluate.ts:268-302`:
-
-| README says | Code actually does |
-|---|---|
-| PROBATION: "Every action requires human approval" | Read-only actions run unwatched; only commercial effect needs APPROVAL |
-| SUPERVISED: "commercial actions require approval" | Commercial actions get **REVIEW**, not approval |
-
-This is not a nitpick: the demo shows step 4 as REVIEW and step 5 as APPROVAL, and
-the README tells the judge those are the same thing. It makes the core mechanic look
-muddled at exactly the moment it should look precise.
-
-- [ ] **5. README tells judges to run `npm test`, which hangs.** `npm test` is bare
-  `vitest` — watch mode. It never returns on a laptop. (CI is unaffected: vitest
-  disables watch when `CI` is set, which GitHub Actions does.) A judge running the
-  documented command sees a hang. Fix: add `"test:run": "vitest run"` to
-  package.json and document that, or change `test` to `vitest run` and add
-  `test:watch`.
-
-- [ ] **6. The newest and most differentiating work is undocumented.** The README
-  never mentions trust persisting across missions, or the learning loop — that the
-  evaluator is a free reward labeller and the audit trail exports as a preference
-  dataset. That is the strongest "AI approach" material in the project and it is
-  absent from the section judged on AI approach.
-
-- [ ] **7. Project Structure block is stale** (README lines 183-202). Omits
-  `src/training/`, `src/trust/`, `src/orchestrator/`, and the four `app/` screens.
-  Small, but it is the map a judge reads before opening anything.
+- [ ] **Confirm the GitHub repo is public** (SPEC Stage 1 requires it). Not checkable
+  from this machine — no `gh` CLI installed.
 
 ---
 
-## Then the video
+## 4. The video
 
-- [ ] **8. Nothing recorded yet.** No video asset in the repo. SPEC Stage 5: "video
-  recorded, two takes, replay mode." Do this only after items 1-5 land, because the
-  recording shows the README's own quick start.
+- [ ] **Nothing recorded yet.** SPEC Stage 5: *"video recorded, two takes, replay
+  mode."* Record after §1-§3, since the video shows the README's own quick start.
 
-Replay mode is the mandated demo source (SPEC line 146), and it works without a key
-or network. The two beats worth showing, both already real:
+Replay mode is the mandated demo source (`SPEC.md:146`) and needs no key or network.
+Two beats, both already real and both visible on screen:
 
-1. **Step 6 BLOCK → demotion → reputation reset.** The agent proposes the cheaper
-   unapproved supplier, is blocked with a cited policy passage, drops
-   SUPERVISED → PROBATION, and *cannot* bounce straight back — the reset is what
-   gives the demotion teeth.
-2. **Step 7 ALLOW.** The purchase order executes the GBP 22,400 a human approved at
-   step 5, matched on vendor **and** amount. It is allowed because the approval
-   exists, not because POs are waved through — and the agent stays demoted.
+1. **Step 6 — BLOCK → demotion → reputation reset.** The Sourcing Agent's prompt
+   carries deliberate cost pressure, so it genuinely proposes the cheaper unapproved
+   supplier rather than being scripted to fail. The evaluator blocks it with the exact
+   policy sentence cited, the agent drops SUPERVISED → PROBATION, and reputation
+   resets to zero so it *cannot* bounce back on the next clean action.
+2. **Step 7 — ALLOW.** The purchase order executes the GBP 22,400 a human approved at
+   step 5, matched on vendor **and** amount. Allowed because that approval exists, not
+   because purchase orders are waved through — and the agent stays demoted.
 
-- [ ] **9. Verify a fresh clone before recording.** Clone to a clean directory, run
-  the README quick start verbatim, confirm all four screens load. The README is the
-  judge's first execution path; it has never been tested end to end from scratch.
-
----
-
-## Cannot verify from here — user must check
-
-- **Is the GitHub repo public?** SPEC Stage 1 requires it. No `gh` CLI on this
-  machine, so this was not checked.
-- **CI run history / badge state.** Same reason. See item 2 — expect it to be empty
-  for all recent work.
+Worth showing if there is time: the Policy Library citation next to a decision, and
+the Flight Recorder replaying the blocked step with Granite's explanation shown beside
+the deterministic reason.
 
 ---
 
-## Not blocking
+## 5. Nice to have, only if §2-§4 are done
 
-Stage 4.5's remaining fine-tune (Task 8.5 Step 4) spends watsonx credits and is
-explicitly optional. Nothing in this plan depends on it. If the deadline is tight,
-drop it — the harness, the dataset export and the run log already demonstrate the
-loop, and the README can say the weight update is future work.
+- [ ] Re-run `npm run export:training` against a seeded database and put the real pair
+  count in the README's impact table. It currently reports the mechanism, not the
+  yield.
+- [ ] `data/training/runs.jsonl` does not exist yet — a first real record would make
+  the tuning logbook concrete rather than described.
 
-The stretch Policy Change Simulator (SPEC line 206) was gated on "only if screens 1-4
-are done by July 25". It is now past that date and unbuilt. Do not start it.
+---
+
+## 6. Explicitly optional — do not let it eat the deadline
+
+- [ ] **Task 8.5 Step 4, the actual fine-tune.** Spends watsonx credits, needs the
+  user's go-ahead, and **nothing depends on it**. The harness, the dataset export, the
+  scoring and the run log already demonstrate the loop end to end. If the deadline is
+  tight, drop it and let the README say the weight update is future work.
+
+  If it runs: a tuned model that does *not* improve is a publishable result. Report it;
+  do not re-roll until the number flatters the demo.
+
+**Do not start the stretch Policy Change Simulator** (`SPEC.md:206`). It was gated on
+screens 1-4 being done by July 25; that date has passed and it is unbuilt.
+
+---
+
+## Standing hazards
+
+- **The local `main` ref (`5a9e6dd`) is a stale orphan** with history unrelated to the
+  work, so `git diff main...HEAD` fails outright with "no merge base". Compare against
+  `origin/main`. Fix with `git branch -f main origin/main`.
+- **There is no `dev` or `develop` branch**, though `ci.yml` references `develop`.
+  `merge/live-onto-ui` is the working branch.
+- **Postgres is on host port 5433**, not 5432 — a local PostgreSQL install commonly
+  squats on 5432 and shadows the container.
+- **Docling needs the project `.venv`**; the global Python site-packages on this
+  machine is corrupted with `~orch` / `~umpy` entries.

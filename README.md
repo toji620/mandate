@@ -18,12 +18,25 @@ Mandate is a policy-to-permission control plane where:
 
 Core principle: **AI where judgment is needed, determinism where authority is exercised.** LLMs (IBM Granite) propose and explain. They never decide.
 
-The system implements graduated autonomy through three bands:
-- **PROBATION**: Every action requires human approval
-- **SUPERVISED**: Low-risk actions auto-allowed; commercial actions require approval
-- **TRUSTED**: Auto-allowed up to policy thresholds; only exceptions escalate
+The system implements graduated autonomy through three bands. The rule that shapes
+all three: **reputation buys an agent less supervision, never more authority.**
 
-Agents earn promotions through clean execution and face instant demotion on policy violations.
+| Band | Read-only actions | Actions with commercial effect |
+|---|---|---|
+| **PROBATION** | run unwatched | require **approval** |
+| **SUPERVISED** | run unwatched | require **review** |
+| **TRUSTED** | run unwatched | run unsupervised — policy limits still apply in full |
+
+A TRUSTED agent still cannot exceed a spend threshold, and a PROBATION agent cannot
+be approved into a policy violation. That is structural, not a convention: policy and
+band are evaluated independently and combined by taking whichever demands more human
+involvement, so a band rule cannot loosen a policy rule even if a new band is added
+later ([`src/engine/evaluate.ts`](src/engine/evaluate.ts)).
+
+Agents earn promotion through clean execution and are demoted instantly on a policy
+violation — **and the violation resets reputation to zero.** Without that reset a
+well-behaved agent re-promotes on its very next action, so the demotion evaporates one
+step after it was imposed.
 
 ## AI Approach and Architecture
 
@@ -70,6 +83,31 @@ Agents earn promotions through clean execution and face instant demotion on poli
    - Live text needs a watsonx key; without one, a fixture explanation is shown
      and labelled as such
 
+4. **The audit trail is a training set** (`src/training/`)
+   - The evaluator is a deterministic reward function: it labels every proposal
+     ALLOW / REVIEW / APPROVAL / BLOCK, for free, with no human in the loop.
+     Labelling is the expensive half of RLHF, and Mandate emits it as a byproduct
+     of governing.
+   - `npm run export:training` turns those labels into DPO-style preference pairs:
+     a blocked proposal is the `rejected` completion, and the agent's own later
+     permitted proposal of the same action type is the `chosen` one — the
+     correction it made after being told which rule it broke.
+   - Pairs are only emitted where a genuine same-action correction exists. Blocks
+     without one are **skipped and counted**, so the export reports how much of the
+     trail was usable rather than padding the dataset with mismatched examples.
+   - `scripts/training-report.ts` scores a run by verdict mix and highest band
+     reached, and compares two runs — the before/after a fine-tune would have to
+     beat. It spends no credits. Tuning runs are recorded in an append-only
+     logbook (`data/training/runs.jsonl`) carrying the dataset fingerprint, cost
+     and both scores.
+
+5. **Trust that survives the mission** (`src/trust/`)
+   - Reputation is not a memory the model carries; it is a **test record for an
+     agent configuration**, keyed by a hash of role + model id + prompt.
+   - Change the model or the prompt and the version changes, so the evidence does
+     not carry over and the agent re-earns its autonomy from PROBATION. A tuned
+     model is a different program and is treated as one.
+
 ### Key Design Decisions
 
 - **Deterministic evaluator**: Same inputs always produce same decision. No LLM calls in the critical path.
@@ -107,6 +145,49 @@ IBM Bob (Bob Shell) was instrumental in scaffolding and implementing this projec
 
 See BOB_USAGE.md for detailed session logs.
 
+## Impact
+
+Every figure below is checkable from a clone of this repository. The command or file
+that produces it is named next to it, because a governance tool that asks to be taken
+on trust has argued against itself.
+
+| Measure | Figure | Verify with |
+|---|---|---|
+| Policy documents parsed offline by Docling | 4 | `data/policies/*.pdf` |
+| Machine-readable rules extracted from them | 12 | `data/seed/*.json` |
+| Rules whose citation traces **verbatim** to its source document | **12 / 12** | `npm run policies:parse` |
+| Automated tests | 117, in 13 files | `npm test` |
+| Safety properties swept across every band × action type | 8 | `src/engine/invariants.test.ts` |
+| Steps in the governed mission that is also the CI gate | 7 | `src/engine/golden-path.test.ts` |
+| LLM calls on the authorisation path | **0** | `src/engine/evaluate.ts` — pure, no I/O |
+| Human annotation needed to build the training set | **0** | `npm run export:training` |
+
+**Citation integrity is enforced, not asserted.** `npm run policies:parse` re-parses
+the source PDFs with Docling and fails if any rule cites a sentence that does not
+appear in its document. It has teeth: it caught a vendor-suspension rule added on
+2026-07-25 whose cited addendum did not exist in the source PDF. The document was
+corrected to match the citation, and the check now passes 12/12. Every policy citation
+shown in the UI traces to a real sentence in a real document.
+
+**The audit trail pays for itself twice.** The same evaluator decisions that authorise
+each action are also, at no extra cost, labelled training data — 4 verdict classes
+applied to every proposal with no human annotator. Labelling is the expensive half of
+preference tuning, and here it is a byproduct of governing rather than a separate
+project.
+
+**Where the approach earned its keep.** Rewriting the evaluator so policy and band are
+evaluated independently (rather than letting the band choose which policy checks ran)
+surfaced two live safety defects that the test suite had been certifying as correct: a
+GBP 22,400 purchase order returning ALLOW in the PROBATION band with no rule cited, and
+a demotion that evaporated on the agent's next clean action because reputation was
+never reset. Both are now invariants swept across every band and action type. See the
+2026-07-14 entry in [BOB_USAGE.md](BOB_USAGE.md).
+
+> **Note for judges on scope:** the figures above measure this implementation, not
+> market outcomes. No industry or cost-saving statistics are cited here because none
+> were independently sourced for this submission, and inventing them would undercut
+> the point the project is making.
+
 ## Running the Project
 
 ### Prerequisites
@@ -138,10 +219,12 @@ mode off committed fixtures, so **no API key is required**.
 
 ### Tests
 
-No database, Docker, or API key needed:
+No database, Docker, or API key needed — the evaluator and golden-path tests run
+with no network by design:
 
 ```bash
-npm test          # full Vitest suite
+npm test           # full Vitest suite, runs once and exits (117 tests)
+npm run test:watch # re-runs on file changes, for development
 npm run lint
 ```
 
@@ -182,23 +265,41 @@ For the exact versions this was verified against, use
 
 ```
 mandate/
-├── app/                    # Next.js App Router pages
+├── app/                       # Next.js App Router — the four screens
+│   ├── policies/              #   Policy Library — rules with source citations
+│   ├── mission/               #   Mission Control — live decision feed
+│   ├── approvals/             #   Approval Inbox — pending REVIEW/APPROVAL
+│   ├── recorder/              #   Flight Recorder — replay any decision
+│   ├── components/            #   shared navigation
+│   └── api/                   #   missions, approvals, policies, decisions
 ├── db/
-│   ├── schema.ts          # Drizzle ORM schemas (7 tables)
-│   └── migrations/        # Database migrations
+│   ├── schema.ts              # Drizzle ORM schemas (7 tables)
+│   └── migrations/
 ├── src/
 │   ├── engine/
-│   │   ├── evaluate.ts    # Pure evaluator function
-│   │   └── golden-path.test.ts  # CI gate test
-│   ├── agents/
-│   │   └── propose.ts     # Agent proposal interface
-│   └── types.ts           # Core domain types
+│   │   ├── evaluate.ts        # The product: pure evaluator, no I/O
+│   │   ├── golden-path.test.ts    # CI gate — the 7-step mission
+│   │   └── invariants.test.ts     # safety swept across band × action type
+│   ├── agents/                # three Granite-backed roles, briefing, retry
+│   ├── orchestrator/          # mission state machine + Postgres persistence
+│   ├── granite/               # shared watsonx.ai client
+│   ├── policies/              # rule loading, Postgres with seed-file fallback
+│   ├── trust/                 # agent-configuration versioning (trust resets)
+│   ├── training/              # preference pairs, run scoring, tuning logbook
+│   └── types.ts
 ├── data/
-│   ├── fixtures/          # Replay-mode proposals
-│   └── seed/              # Policy documents (JSON)
+│   ├── policies/              # source policy PDFs (what citations trace to)
+│   ├── seed/                  # extracted rules + Docling-parsed text
+│   ├── fixtures/              # replay proposals + a captured live run
+│   └── training/              # exported dataset; runs.jsonl is tracked
 ├── scripts/
-│   └── seed.ts            # Database seeding script
-└── docker-compose.yml     # PostgreSQL setup
+│   ├── seed.ts
+│   ├── run-live-mission.ts    # live Granite mission
+│   ├── export-training-data.ts
+│   ├── training-report.ts     # score / compare runs, credit-free
+│   └── docling/               # offline PDF generation + citation verification
+├── docs/superpowers/plans/    # the plans this was built from
+└── docker-compose.yml         # PostgreSQL 16 (host port 5433)
 ```
 
 ## License
