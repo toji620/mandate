@@ -56,7 +56,7 @@ export default function ApprovalInbox() {
       // Remove from local state immediately for better UX
       setApprovals(prev => prev.filter(a => a.id !== approvalId));
       if (action === 'approve') {
-        pushToast('APPROVED', 'Mission resumed');
+        pushToast('APPROVED', 'Proposal approved');
       } else {
         pushToast('REJECTED', 'Proposal closed');
       }

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-export type ToastItem = { id: number; kicker: string; message: string };
+export type ToastItem = { id: number; kicker: string; message: string; href?: string };
 
 const TOAST_LIFETIME_MS = 3500;
 const TOAST_EXIT_MS = 260;
@@ -38,10 +38,18 @@ function Toast({
     setLeaving(true);
   };
 
+  const activate = () => {
+    if (toast.href) {
+      window.location.href = toast.href;
+      return;
+    }
+    dismissNow();
+  };
+
   return (
     <div
-      className={leaving ? 'toast leaving' : 'toast'}
-      onClick={dismissNow}
+      className={`toast${toast.href ? ' clickable' : ''}${leaving ? ' leaving' : ''}`}
+      onClick={activate}
       role="status"
     >
       <span className="toast-kicker">{toast.kicker}</span>

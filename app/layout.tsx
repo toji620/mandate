@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono, IBM_Plex_Serif } from "next/font/google";
 import Navigation from "./components/Navigation";
+import NotificationCenter from "./components/NotificationCenter";
 import "./globals.css";
 
 const plexSans = IBM_Plex_Sans({
@@ -36,6 +37,7 @@ export default function RootLayout({
     <html lang="en" className={`${plexSans.variable} ${plexMono.variable} ${plexSerif.variable}`}>
       <body>
         <Navigation />
+        <NotificationCenter />
         {children}
       </body>
     </html>

@@ -7,6 +7,9 @@ import TrustMeter from '../components/TrustMeter';
 
 const BAND_ORDER = ['PROBATION', 'SUPERVISED', 'TRUSTED'];
 
+/** Replay mode replays the recorded golden-path mission, so its goal is fixed. */
+const REPLAY_GOAL = 'Purchase 20 developer laptops for under GBP 25,000, delivered by Friday';
+
 function sentenceCase(actionType: string): string {
   const words = actionType.replace(/_/g, ' ').toLowerCase();
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -16,6 +19,7 @@ export default function MissionControl() {
   const [missions, setMissions] = useState<MissionStatus[]>([]);
   const [selectedMission, setSelectedMission] = useState<string | null>(null);
   const [mode, setMode] = useState<'live' | 'replay'>('replay');
+  const [goal, setGoal] = useState(REPLAY_GOAL);
   const [isStarting, setIsStarting] = useState(false);
   // Steps present on first load render statically; steps that arrive while
   // watching get the typed-out explanation and verdict stamp.
@@ -52,7 +56,7 @@ export default function MissionControl() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          goal: 'Purchase 20 developer laptops for under GBP 25,000, delivered by Friday',
+          goal: mode === 'replay' ? REPLAY_GOAL : goal.trim() || REPLAY_GOAL,
           mode,
         }),
       });
@@ -112,6 +116,21 @@ export default function MissionControl() {
           <button className="btn btn-primary" onClick={startMission} disabled={isStarting}>
             {isStarting ? 'Starting mission' : 'Start mission'}
           </button>
+        </div>
+        <div style={{ marginTop: '0.75rem' }}>
+          <input
+            className="mono goal-input"
+            value={mode === 'replay' ? REPLAY_GOAL : goal}
+            onChange={(e) => setGoal(e.target.value)}
+            disabled={mode === 'replay'}
+            aria-label="Mission goal"
+            placeholder="Describe the mission for the agents"
+          />
+          <p className="faint" style={{ margin: '0.35rem 0 0', fontSize: '0.78rem' }}>
+            {mode === 'replay'
+              ? 'Replay re-runs the recorded golden-path mission, so its goal is fixed.'
+              : 'Live mode sends this goal to the Granite agents. Policy rules still govern whatever they propose.'}
+          </p>
         </div>
       </div>
 
