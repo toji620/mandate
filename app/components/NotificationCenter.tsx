@@ -94,6 +94,12 @@ export default function NotificationCenter() {
             if (prev && prev !== 'completed' && m.status === 'completed') {
               push({ kicker: 'MISSION COMPLETED', message: 'Full audit trail in the Flight Recorder' });
             }
+            if (prev && prev !== 'failed' && m.status === 'failed') {
+              push({
+                kicker: 'MISSION FAILED',
+                message: 'Likely the shared free-tier Granite pool is full — try again in a minute',
+              });
+            }
           }
         }
       } catch {

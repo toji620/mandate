@@ -83,6 +83,9 @@ export async function proposeLive(
   try {
     text = await graniteChat(prompt, { maxTokens: 500, temperature: 0.7 });
   } catch (error) {
+    // Rate limiting already exhausted its own backoff inside graniteChat;
+    // re-asking with a blunter prompt cannot help and doubles the wait.
+    if (error instanceof Error && error.name === 'GraniteBusyError') throw error;
     // One retry with a blunter instruction. Granite sometimes prefaces JSON with prose.
     console.error(`Granite call failed for ${role}, retrying:`, error);
     text = await graniteChat(`${prompt}\n\nRespond with ONLY valid JSON. No other text.`, {

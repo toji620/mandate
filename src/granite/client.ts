@@ -24,6 +24,17 @@ export class GraniteNotConfiguredError extends Error {
   }
 }
 
+export class GraniteBusyError extends Error {
+  constructor(attempts: number) {
+    super(
+      `watsonx is rate-limiting this model (free-tier concurrency pool is full). ` +
+        `Gave up after ${attempts} attempts with backoff. Try again in a minute — ` +
+        `the pool is shared across all free-plan users of the model.`
+    );
+    this.name = 'GraniteBusyError';
+  }
+}
+
 export function getModelId(): string {
   return process.env.WATSONX_MODEL_ID || DEFAULT_MODEL_ID;
 }
@@ -32,7 +43,30 @@ export function isGraniteConfigured(): boolean {
   return Boolean(process.env.WATSONX_API_KEY && process.env.WATSONX_PROJECT_ID);
 }
 
-/** Single-turn chat with Granite. Returns the raw text. */
+/**
+ * Backoff for 429s. The Lite plan enforces two very different limits that both
+ * surface as 429: a per-instance 2 requests/second rate, and a global pool of
+ * 10 concurrent free requests per model shared across ALL Lite users. The
+ * first clears in under a second; the second clears whenever strangers'
+ * requests finish. Exponential delays with jitter cover both without
+ * hammering a saturated pool.
+ */
+const RETRY_DELAYS_MS = [1000, 2500, 5000, 10000, 20000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimit(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error &&
+    (error as { status?: number }).status === 429
+  );
+}
+
+/** Single-turn chat with Granite. Returns the raw text. Retries 429s with backoff. */
 export async function graniteChat(
   prompt: string,
   opts: { maxTokens?: number; temperature?: number } = {}
@@ -48,16 +82,31 @@ export async function graniteChat(
     authenticator: new IamAuthenticator({ apikey: process.env.WATSONX_API_KEY! }),
   });
 
-  const response = await client.textChat({
-    modelId: getModelId(),
-    projectId: process.env.WATSONX_PROJECT_ID!,
-    messages: [{ role: 'user', content: prompt }],
-    maxTokens: opts.maxTokens ?? 500,
-    temperature: opts.temperature ?? 0.7,
-  });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await client.textChat({
+        modelId: getModelId(),
+        projectId: process.env.WATSONX_PROJECT_ID!,
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens: opts.maxTokens ?? 500,
+        temperature: opts.temperature ?? 0.7,
+      });
 
-  const text = response.result.choices[0]?.message?.content?.trim();
-  if (!text) throw new Error('Granite returned an empty response');
+      const text = response.result.choices[0]?.message?.content?.trim();
+      if (!text) throw new Error('Granite returned an empty response');
 
-  return text;
+      return text;
+    } catch (error) {
+      if (!isRateLimit(error)) throw error;
+      if (attempt >= RETRY_DELAYS_MS.length) {
+        throw new GraniteBusyError(attempt + 1);
+      }
+      const jitter = Math.floor(Math.random() * 500);
+      const delay = RETRY_DELAYS_MS[attempt] + jitter;
+      console.warn(
+        `[granite] 429 (attempt ${attempt + 1}/${RETRY_DELAYS_MS.length + 1}), backing off ${delay}ms`
+      );
+      await sleep(delay);
+    }
+  }
 }
