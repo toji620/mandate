@@ -100,6 +100,16 @@ step after it was imposed.
      beat. It spends no credits. Tuning runs are recorded in an append-only
      logbook (`data/training/runs.jsonl`) carrying the dataset fingerprint, cost
      and both scores.
+   - The loop is batch-triggered: every `TUNE_WINDOW` evaluator decisions
+     (default 500), the next tuning generation is due. `npm run tune:status`
+     reports the window; `npm run tune:status -- --plan "..."` cuts the next
+     generation as a `planned` record, fingerprinted against the exported
+     dataset. The first generation is cut and recorded; the weight update
+     itself is gated on a paid watsonx.ai plan (Lite does not run tuning
+     experiments) and is stated as such rather than simulated. One honest
+     property of this design: N decisions are not N pairs — a well-behaved
+     agent starves its own training set, so each generation needs a wider
+     window as the agent improves.
 
 5. **Trust that survives the mission** (`src/trust/`)
    - Reputation is not a memory the model carries; it is a **test record for an
@@ -204,7 +214,7 @@ npm install            # Node dependencies
 cp .env.example .env    # DB credentials work out of the box
 npm run db:up           # PostgreSQL 16 in Docker, on host port 5433
 npm run db:migrate      # create the tables
-npm run db:seed         # load the 4 policy documents (11 rules)
+npm run db:seed         # load the 4 policy documents (12 rules)
 npm run dev             # http://localhost:3000
 ```
 

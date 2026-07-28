@@ -18,6 +18,12 @@ import type { Verdict } from '@/src/types';
 
 /** The fields of a recorded decision this builder needs. A structural subset of the DB row. */
 export interface LabelledDecision {
+  /**
+   * Persistence sequence (the DB row id). When present it is the authority on
+   * which of two same-step decisions came first — callers cannot be trusted to
+   * pass rows in insertion order (getAllDecisions returns newest-first).
+   */
+  id?: number;
   missionId: string;
   missionGoal: string;
   stepNumber: number;
@@ -63,15 +69,26 @@ export function buildPreferencePairs(decisions: LabelledDecision[]): PreferenceR
   let skipped = 0;
 
   for (const steps of byMission.values()) {
-    const ordered = [...steps].sort((a, b) => a.stepNumber - b.stepNumber);
+    // Order by step, then by persistence sequence within a step. The sequence
+    // matters because a bounded retry records its corrected proposal under the
+    // SAME step number as the block it corrects — the correction is "later" by
+    // insertion, not by step. Prefer the row id (authoritative); fall back to
+    // input order for id-less callers such as tests.
+    const ordered = [...steps]
+      .map((s, inputIndex) => ({ s, seq: s.id ?? inputIndex }))
+      .sort((a, b) => a.s.stepNumber - b.s.stepNumber || a.seq - b.seq);
 
-    for (const blocked of ordered.filter((s) => s.verdict === 'BLOCK')) {
-      const correction = ordered.find(
-        (s) =>
-          s.stepNumber > blocked.stepNumber &&
+    for (const { s: blocked, seq: blockedSeq } of ordered.filter(
+      ({ s }) => s.verdict === 'BLOCK'
+    )) {
+      const found = ordered.find(
+        ({ s, seq }) =>
+          (s.stepNumber > blocked.stepNumber ||
+            (s.stepNumber === blocked.stepNumber && seq > blockedSeq)) &&
           s.actionType === blocked.actionType &&
           s.verdict !== 'BLOCK'
       );
+      const correction = found?.s;
 
       if (!correction) {
         skipped++;

@@ -20,7 +20,9 @@
     "mission:live": "tsx scripts/run-live-mission.ts",
     "export:training": "tsx scripts/export-training-data.ts",
     "policies:pdf": "python scripts/docling/make_pdfs.py",
-    "policies:parse": "python scripts/docling/extract.py"
+    "policies:parse": "python scripts/docling/extract.py",
+    "tune:status": "tsx scripts/tune-status.ts",
+    "training:report": "tsx scripts/training-report.ts"
   },
   "dependencies": {
     "@ibm-cloud/watsonx-ai": "^1.7.15",

@@ -148,7 +148,7 @@ export default function MissionControl() {
 
           <h2 className="section-label">Decision feed</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            {currentMission.steps.map((step) => {
+            {currentMission.steps.map((step, stepIdx) => {
               const before = step.agentStateBefore.autonomyBand;
               const after = step.agentStateAfter.autonomyBand;
               const bandChanged = before !== after;
@@ -157,7 +157,7 @@ export default function MissionControl() {
               const isNew = seenSteps.current !== null && !seenSteps.current.has(stepKey);
               if (isNew) seenSteps.current!.add(stepKey);
               return (
-                <Fragment key={step.stepNumber}>
+                <Fragment key={`${step.stepNumber}-${stepIdx}`}>
                   <StepCard step={step} isNew={isNew} />
                   {bandChanged && (
                     <div className={promoted ? 'ledger-event' : 'ledger-event demotion'}>

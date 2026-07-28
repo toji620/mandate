@@ -8,6 +8,7 @@
 import 'dotenv/config';
 
 import { orchestrator } from '@/src/orchestrator/orchestrator';
+import { getModelId } from '@/src/granite/client';
 import type { PolicyRule } from '@/src/types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -133,7 +134,7 @@ async function runLiveMission() {
       const fixturesData = {
         mission: mission.goal,
         mode: 'live',
-        model: process.env.WATSONX_MODEL_ID,
+        model: getModelId(),
         briefing: process.env.POLICY_BRIEFING ?? 'none',
         capturedAt: new Date().toISOString(),
         verdicts: mission.steps.map((s) => ({ step: s.stepNumber, action: s.proposal.actionType, verdict: s.decision.verdict })),

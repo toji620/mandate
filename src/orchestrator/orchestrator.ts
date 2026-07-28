@@ -247,6 +247,26 @@ export class MissionOrchestrator {
             payload: proposal.payload,
             reason: decision.explanation,
           });
+
+          // A blocked attempt that will be retried is still a decision the
+          // evaluator made: it goes on the record like any other. Dropping it
+          // would falsify the audit trail — and it is the training pipeline's
+          // best signal, the block and its correction side by side under the
+          // same step. Band consequences still bind to the step's final
+          // outcome, so a corrected block does not demote.
+          if (attempt < maxRetries) {
+            const attemptStep: MissionStep = {
+              stepNumber,
+              agentRole,
+              proposal,
+              decision,
+              agentStateBefore,
+              agentStateAfter: agentStateBefore,
+              timestamp: new Date(),
+            };
+            this.recordStep(mission, attemptStep);
+            await saveDecision(missionId, attemptStep, mission.goal);
+          }
         }
 
         if (decision.verdict === 'BLOCK') {

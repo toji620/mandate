@@ -49,6 +49,12 @@ export interface TuningRunRecord {
   baseScore: RunScore | null;
   /** Score of the tuned model after tuning. */
   tunedScore: RunScore | null;
+  /**
+   * Total evaluator decisions recorded when this run was cut. The batch
+   * trigger (tune-trigger.ts) counts its window from the latest record's
+   * value, so each generation knows how much new signal it was cut from.
+   */
+  decisionsAtRun?: number;
   notes: string;
 }
 
