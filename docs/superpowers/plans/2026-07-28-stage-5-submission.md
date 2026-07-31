@@ -1,17 +1,17 @@
 # Stage 5/6 — Submission readiness (complete plan)
 
-**Last updated 2026-07-28.** This is the single plan for everything between here and
+**Last updated 2026-07-31.** This is the single plan for everything between here and
 submission. Stage 4.5 has its own plan
 ([`2026-07-14-stage-4.5-make-the-ai-real.md`](2026-07-14-stage-4.5-make-the-ai-real.md))
-and is finished apart from one optional, credit-spending item (§6 below).
+and is finished; its one remaining item is resolved in §6 below.
 
 Everything here was verified against the repo, not assumed. Where something is
 claimed done, the evidence is named.
 
-> **Deadline conflict — resolve first.** `SPEC.md:225` says *"Buffer July 29-30;
-> submit July 30; nothing new after July 28."* The user believes the deadline is
-> **July 31**. If 31 is right, SPEC.md is stale and should be corrected, because
-> "nothing new after July 28" is what decides whether §6 is in scope at all.
+> **The code is submission-ready as of 2026-07-31.** All gates green on `main`:
+> `npm test` **127/127 in 14 files**, `npx tsc --noEmit` clean, `npm run lint` clean,
+> `npm run build` succeeds, and Docling verifies **12/12** citations. The only things
+> left are §3 (two checks needing a browser) and §4 (the video).
 
 ---
 
@@ -66,27 +66,35 @@ claimed done, the evidence is named.
 
 ---
 
-## 2. The merge — deferred by the user, but it is what decides the submission
+## 2. The merge — DONE, by a collaborator, on 2026-07-31
 
-- [ ] **`origin/main` is 9 commits behind, and judges clone `main`.**
+- [x] **Everything is on `main`.**
 
-`origin/main` sits at `e4e3aa3` ("Hero speaks in IBM Plex Serif"). Live Granite, the
-hardened evaluator, vendor suspension, the training harness — none of it is on the
-default branch. **A judge cloning this repo today does not see the project.**
-
-Deliberately not done on 2026-07-28 at the user's instruction. It remains the single
-highest-value action available, and it fast-forwards cleanly (0 behind / 9 ahead, no
-conflicts):
+A collaborator rebased `merge/live-onto-ui` onto `main` and force-pushed both, then
+added two commits of their own. The rebase changed every commit id (`4f03170` →
+`924cd28`), so the branch *looked* diverged; it was not. Verified by content, which is
+the only check that means anything after a rebase:
 
 ```bash
-git branch -f main origin/main      # the LOCAL main ref is a stale orphan — fix it first
-git checkout main
-git merge --ff-only merge/live-onto-ui
-git push origin main
+git diff HEAD origin/merge/live-onto-ui                              # empty → identical trees
+git log --oneline --cherry-pick --right-only origin/main...<branch>  # empty → nothing stranded
 ```
 
-Acceptance: `git log --oneline -1 origin/main` shows the latest work, and the CI run
-triggered by that push is green.
+Both came back empty for `merge/live-onto-ui` **and** for the older
+`fix/evaluator-safety-and-stage-4`. No work is stranded on any branch.
+
+The collaborator's two additions:
+
+- `03add14` — closes the learning loop. `src/training/tune-trigger.ts` makes "when is a
+  generation due" an explicit, tested rule (every `TUNE_WINDOW` evaluator decisions,
+  default 500), `npm run tune:status` reports the window, and `data/training/runs.jsonl`
+  now holds a real first record: 49 decisions, 2 preference pairs, fingerprint
+  `9f761708c9cbacec`.
+- `f288ae7` — notification centre, pending-approval badge, global toasts, live mission
+  goal.
+
+Acceptance met: `git log --oneline -1 origin/main` → `f288ae7`, and the working branch
+contains nothing `main` lacks.
 
 ---
 
@@ -128,25 +136,28 @@ the deterministic reason.
 
 ---
 
-## 5. Nice to have, only if §2-§4 are done
+## 5. Nice to have — both now DONE
 
-- [ ] Re-run `npm run export:training` against a seeded database and put the real pair
-  count in the README's impact table. It currently reports the mechanism, not the
-  yield.
-- [ ] `data/training/runs.jsonl` does not exist yet — a first real record would make
-  the tuning logbook concrete rather than described.
+- [x] `data/training/runs.jsonl` exists with a real record, so the tuning logbook is
+  concrete rather than described.
+- [x] The dataset yield is real, not hypothetical: 49 decisions produced **2**
+  preference pairs. Thin, and honestly so — only a block with a later corrected retry
+  becomes a pair, so a well-behaved agent starves its own training set. That property
+  is documented in `tune-trigger.ts` rather than hidden.
 
 ---
 
-## 6. Explicitly optional — do not let it eat the deadline
+## 6. The fine-tune — RESOLVED: blocked by plan tier, not by choice
 
-- [ ] **Task 8.5 Step 4, the actual fine-tune.** Spends watsonx credits, needs the
-  user's go-ahead, and **nothing depends on it**. The harness, the dataset export, the
-  scoring and the run log already demonstrate the loop end to end. If the deadline is
-  tight, drop it and let the README say the weight update is future work.
+- [x] **Task 8.5 Step 4 cannot run, and that is now a documented fact rather than an
+  open decision.** Per the note on the `gen-1` record in `runs.jsonl`: watsonx.ai
+  **Lite does not run tuning experiments at all**, and LoRA targets a `granite-3-1`
+  base rather than the `granite-4-h-small` the agents actually run.
 
-  If it runs: a tuned model that does *not* improve is a publishable result. Report it;
-  do not re-roll until the number flatters the demo.
+  This is a better story than "we ran out of time". The generation is specified,
+  frozen and fingerprinted against the exported dataset; only the weight update is
+  gated, and it is stated as gated rather than simulated. Say exactly this if asked —
+  do not imply the tune ran.
 
 **Do not start the stretch Policy Change Simulator** (`SPEC.md:206`). It was gated on
 screens 1-4 being done by July 25; that date has passed and it is unbuilt.
@@ -155,11 +166,17 @@ screens 1-4 being done by July 25; that date has passed and it is unbuilt.
 
 ## Standing hazards
 
-- **The local `main` ref (`5a9e6dd`) is a stale orphan** with history unrelated to the
-  work, so `git diff main...HEAD` fails outright with "no merge base". Compare against
-  `origin/main`. Fix with `git branch -f main origin/main`.
+- ~~The local `main` ref is a stale orphan~~ **Fixed 2026-07-31.** It was archived as
+  `archive/pre-rebase-main` and `main` repointed at `origin/main`, so `git diff
+  main...HEAD` works again.
 - **There is no `dev` or `develop` branch**, though `ci.yml` references `develop`.
-  `merge/live-onto-ui` is the working branch.
+  `main` is now the working branch; `merge/live-onto-ui` is fully merged and can be
+  deleted.
+- **`npm run policies:parse` invokes a bare `python`.** With a `.venv` present but not
+  activated it silently runs the *global* interpreter, which on this machine fails with
+  a Docling `ConversionError`. Run `.venv/Scripts/python scripts/docling/extract.py`
+  directly. The README now documents this; the npm shorthand was left as-is rather than
+  hard-coding a platform-specific venv path into `package.json`.
 - **Postgres is on host port 5433**, not 5432 — a local PostgreSQL install commonly
   squats on 5432 and shadows the container.
 - **Docling needs the project `.venv`**; the global Python site-packages on this

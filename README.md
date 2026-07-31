@@ -166,7 +166,7 @@ on trust has argued against itself.
 | Policy documents parsed offline by Docling | 4 | `data/policies/*.pdf` |
 | Machine-readable rules extracted from them | 12 | `data/seed/*.json` |
 | Rules whose citation traces **verbatim** to its source document | **12 / 12** | `npm run policies:parse` |
-| Automated tests | 117, in 13 files | `npm test` |
+| Automated tests | 127, in 14 files | `npm test` |
 | Safety properties swept across every band × action type | 8 | `src/engine/invariants.test.ts` |
 | Steps in the governed mission that is also the CI gate | 7 | `src/engine/golden-path.test.ts` |
 | LLM calls on the authorisation path | **0** | `src/engine/evaluate.ts` — pure, no I/O |
@@ -233,7 +233,7 @@ No database, Docker, or API key needed — the evaluator and golden-path tests r
 with no network by design:
 
 ```bash
-npm test           # full Vitest suite, runs once and exits (117 tests)
+npm test           # full Vitest suite, runs once and exits (127 tests)
 npm run test:watch # re-runs on file changes, for development
 npm run lint
 ```
@@ -255,11 +255,24 @@ global Python install:
 
 ```bash
 python -m venv .venv
-.venv/Scripts/pip install -r scripts/docling/requirements.txt   # Windows
-# .venv/bin/pip install -r scripts/docling/requirements.txt      # macOS/Linux
-npm run policies:pdf      # generate the source policy PDFs
-npm run policies:parse    # Docling parses them and verifies every citation
+
+# Windows
+.venv/Scripts/pip install -r scripts/docling/requirements.txt
+.venv/Scripts/python scripts/docling/make_pdfs.py   # generate the source policy PDFs
+.venv/Scripts/python scripts/docling/extract.py     # verify every citation
+
+# macOS/Linux
+# .venv/bin/pip install -r scripts/docling/requirements.txt
+# .venv/bin/python scripts/docling/make_pdfs.py
+# .venv/bin/python scripts/docling/extract.py
 ```
+
+The venv interpreter is named explicitly rather than relying on `python`. The
+shorthands `npm run policies:pdf` and `npm run policies:parse` run the same two
+scripts, but they invoke a bare `python`, so they only reach Docling once the venv
+is **activated**. Installing into `.venv` and then running the npm script without
+activating it silently uses the global interpreter — which is how this fails with a
+`ConversionError` on a machine that has some other Docling already installed.
 
 For the exact versions this was verified against, use
 `scripts/docling/requirements.lock.txt` instead.
