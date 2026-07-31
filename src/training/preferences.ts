@@ -6,8 +6,8 @@ import type { Verdict } from '@/src/types';
  *
  * The evaluator is a deterministic reward function: it labels every proposal
  * ALLOW / REVIEW / APPROVAL / BLOCK, for free, with no human in the loop. That
- * labelling is the expensive half of RLHF, and Mandate emits it as a byproduct
- * of governance. This module reads those labels and builds DPO-style pairs: a
+ * labelled preference data is the expensive ingredient in fine-tuning, and
+ * Mandate emits it as a byproduct of governance. This module reads those labels and builds DPO-style pairs: a
  * BLOCKed proposal is the `rejected` completion, and a later permitted proposal
  * of the SAME action type in the SAME mission is the `chosen` one — the agent's
  * own correction after being told why it was wrong.

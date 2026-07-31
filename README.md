@@ -86,8 +86,8 @@ step after it was imposed.
 4. **The audit trail is a training set** (`src/training/`)
    - The evaluator is a deterministic reward function: it labels every proposal
      ALLOW / REVIEW / APPROVAL / BLOCK, for free, with no human in the loop.
-     Labelling is the expensive half of RLHF, and Mandate emits it as a byproduct
-     of governing.
+     Labelled preference data is the expensive ingredient in fine-tuning, and
+     Mandate emits it as a byproduct of governing.
    - `npm run export:training` turns those labels into DPO-style preference pairs:
      a blocked proposal is the `rejected` completion, and the agent's own later
      permitted proposal of the same action type is the `chosen` one — the
