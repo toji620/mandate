@@ -139,21 +139,41 @@ This approach enables organisations to deploy AI agents in procurement, complian
 
 ## How IBM Bob Was Used
 
-IBM Bob (Bob Shell) was instrumental in scaffolding and implementing this project:
+IBM Bob (Bob Shell) was the primary development tool across the whole lifecycle
+of this project: planning, development, testing, debugging, and iteration. Each
+stage was run as a scoped Bob session against SPEC.md (the build specification),
+with the session's goal, output, and what we kept logged in BOB_USAGE.md.
 
-1. **Project Setup**: Bob scaffolded the Next.js 15 + TypeScript application with proper configuration for ESLint, Vitest, and the App Router.
+1. **Planning and architecture**: staged build plans were written and refined
+   with Bob against SPEC.md, which defines the domain model, the evaluator
+   contract, agent roster, and stage-by-stage acceptance criteria that every
+   session built to.
 
-2. **Database Architecture**: Bob created the PostgreSQL docker-compose setup with healthchecks, configured Drizzle ORM with all seven domain schemas, and ensured the trust_ledger is properly constrained as append-only.
+2. **Project setup**: Bob scaffolded the Next.js 15 + TypeScript application
+   with ESLint, Vitest, and the App Router, plus the PostgreSQL docker-compose
+   setup and Drizzle ORM with all seven domain schemas, including the
+   append-only trust_ledger constraint.
 
-3. **Core Engine**: Bob implemented the pure evaluator function with band transition logic, ensuring no I/O, database calls, or non-deterministic behaviour.
+3. **Core engine development**: Bob implemented the pure evaluator (no I/O, no
+   LLM calls, fully deterministic), the autonomy band transitions, and the
+   dual-mode propose() interface behind which live Granite and replay fixtures
+   are interchangeable.
 
-4. **Testing Infrastructure**: Bob created the golden-path test suite that validates the full 7-step procurement mission without requiring database or network access.
+4. **Testing**: Bob built the test infrastructure and the golden-path suite
+   that replays the full 7-step procurement mission with no database or
+   network, which became the CI gate every later change had to survive.
 
-5. **Seed Data**: Bob generated realistic policy documents (finance approval matrix, procurement policy, approved vendor list, security requirements) with proper source passages and thresholds.
+5. **Debugging and hardening**: Bob sessions drove the fix cycles logged in
+   BOB_USAGE.md, from CI failures (Next.js 15 route typing) through the
+   evaluator safety holes surfaced by live agent runs.
 
-6. **CI/CD**: Bob configured GitHub Actions to run linting and tests on every push, ensuring code quality gates are enforced.
+6. **Seed data and CI**: Bob generated the policy seed documents with source
+   passages and thresholds, and configured GitHub Actions to run lint, tests,
+   and the build on every push.
 
-See BOB_USAGE.md for detailed session logs.
+**BOB_USAGE.md is the evidence log**: dated sessions, what Bob produced, and
+what was kept or changed, maintained from the first scaffolding session to
+submission.
 
 ## Impact
 
