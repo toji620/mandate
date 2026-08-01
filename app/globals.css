@@ -788,9 +788,12 @@ input[type="radio"] {
 
 /* ---------- Page transition ---------- */
 
+/* Opacity only: animating transform here would make .page a containing
+   block for position:fixed descendants (the replay modal), pinning the
+   overlay to the page instead of the viewport. */
 @keyframes pagefade {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: none; }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .page { animation: pagefade 360ms ease both; }
